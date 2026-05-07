@@ -10,6 +10,7 @@ import { Groups } from './pages/Groups';
 import { Profile } from './pages/Profile';
 import { Recommendations } from './pages/Recommendations';
 import { FacultyRequests } from './pages/FacultyRequests';
+import { AdminDashboard } from './pages/AdminDashboard';
 
 function App() {
   return (
@@ -30,6 +31,7 @@ function App() {
             <Route path="/settings" element={<Profile />} />
             <Route path="/recommendations" element={<Recommendations />} />
             <Route path="/requests" element={<FacultyRequests />} />
+            <Route path="/admin" element={<AdminDashboard />} />
             {/* Redirect root to dashboard */}
             <Route path="/" element={<Navigate to="/dashboard" replace />} />
           </Route>

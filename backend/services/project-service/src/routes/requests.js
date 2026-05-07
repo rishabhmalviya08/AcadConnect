@@ -6,18 +6,60 @@ const { createError } = require('../utils/errors');
 
 const router = express.Router();
 
+const notifyUser = async (trx, { userId, type, title, message, metadata = {} }) => {
+  await trx('notifications').insert({
+    id: uuidv4(),
+    user_id: userId,
+    type,
+    title,
+    message,
+    metadata,
+  });
+};
+
+const getAcceptedGroupMemberIds = async (trx, groupId) => {
+  const members = await trx('group_members')
+    .select('student_id')
+    .where({ group_id: groupId, status: 'accepted' });
+  return members.map((m) => m.student_id);
+};
+
 /**
  * POST /api/requests
  * Submit a mentorship request to a specific faculty member.
  * Student only. Must be leader of the group that owns the project.
  *
- * Body: { project_id, faculty_id }
+ * Body: { project_id, faculty_id?, faculty_name?, snippet? }
  */
 router.post('/', authenticate, authorize('student'), async (req, res, next) => {
   try {
-    const { project_id, faculty_id } = req.body;
-    if (!project_id || !faculty_id) {
-      throw createError(400, 'project_id and faculty_id are required');
+    const { project_id, faculty_id, faculty_name, snippet } = req.body;
+    if (!project_id || (!faculty_id && !faculty_name)) {
+      throw createError(400, 'project_id and either faculty_id or faculty_name are required');
+    }
+    if (!snippet || typeof snippet !== 'string') {
+      throw createError(400, 'snippet is required');
+    }
+    const wordCount = snippet.trim().split(/\s+/).filter(Boolean).length;
+    if (wordCount > 200) {
+      throw createError(400, 'snippet cannot exceed 200 words');
+    }
+
+    let resolvedFacultyId = faculty_id;
+    if (!resolvedFacultyId && faculty_name) {
+      const matches = await db('users')
+        .select('id')
+        .where({ name: faculty_name, role: 'faculty' })
+        .limit(2);
+
+      if (matches.length === 0) {
+        throw createError(404, 'Faculty not found');
+      }
+      if (matches.length > 1) {
+        throw createError(409, 'Ambiguous faculty name. Please retry with faculty_id.');
+      }
+
+      resolvedFacultyId = matches[0].id;
     }
 
     // 1. Verify Project belongs to the student's group
@@ -52,17 +94,28 @@ router.post('/', authenticate, authorize('student'), async (req, res, next) => {
 
     // 4. Ensure no duplicate pending request to the same faculty
     const existing = await db('project_requests')
-      .where({ project_id, faculty_id })
+      .where({ project_id, faculty_id: resolvedFacultyId })
       .first();
     if (existing) throw createError(409, 'Your group has already submitted a request to this faculty');
 
-    // 5. Insert Request
+    // 5. Insert Request and notify faculty
     const requestId = uuidv4();
-    await db('project_requests').insert({
-      id: requestId,
-      project_id,
-      faculty_id,
-      status: 'pending',
+    await db.transaction(async (trx) => {
+      await trx('project_requests').insert({
+        id: requestId,
+        project_id,
+        faculty_id: resolvedFacultyId,
+        snippet: snippet.trim(),
+        status: 'pending',
+      });
+
+      await notifyUser(trx, {
+        userId: resolvedFacultyId,
+        type: 'request_submitted',
+        title: 'New mentorship request',
+        message: `A student group submitted a mentorship request for project "${project.title}".`,
+        metadata: { project_id, request_id: requestId },
+      });
     });
 
     res.status(201).json({
@@ -88,6 +141,7 @@ router.get('/faculty', authenticate, authorize('faculty'), async (req, res, next
       .select(
         'pr.id as request_id',
         'pr.status as request_status',
+        'pr.snippet',
         'pr.created_at',
         'p.id as project_id',
         'p.title as project_title',
@@ -138,6 +192,12 @@ router.put('/:id/status', authenticate, authorize('faculty'), async (req, res, n
       if (pr.faculty_id !== req.user.id) throw createError(403, 'Not your request');
       if (pr.status !== 'pending') throw createError(400, `Request is already ${pr.status}`);
 
+      const project = await trx('projects as p')
+        .join('groups as g', 'p.group_id', 'g.id')
+        .select('p.id', 'p.title', 'g.id as group_id')
+        .where('p.id', pr.project_id)
+        .first();
+
       if (status === 'accepted') {
         const fp = await trx('faculty_profiles').select('max_capacity').where('user_id', req.user.id).first();
         const maxCapacity = fp.max_capacity;
@@ -182,9 +242,31 @@ router.put('/:id/status', authenticate, authorize('faculty'), async (req, res, n
             .where({ faculty_id: req.user.id, status: 'pending' })
             .update({ status: 'rejected', updated_at: trx.fn.now() });
         }
+
+        const groupMemberIds = await getAcceptedGroupMemberIds(trx, project.group_id);
+        for (const memberId of groupMemberIds) {
+          await notifyUser(trx, {
+            userId: memberId,
+            type: 'request_accepted',
+            title: 'Mentorship request accepted',
+            message: `Your request for "${project.title}" was accepted.`,
+            metadata: { project_id: project.id, request_id: reqId },
+          });
+        }
       } else {
         // Just rejecting
         await trx('project_requests').where({ id: reqId }).update({ status: 'rejected', updated_at: trx.fn.now() });
+
+        const groupMemberIds = await getAcceptedGroupMemberIds(trx, project.group_id);
+        for (const memberId of groupMemberIds) {
+          await notifyUser(trx, {
+            userId: memberId,
+            type: 'request_rejected',
+            title: 'Mentorship request rejected',
+            message: `Your request for "${project.title}" was rejected.`,
+            metadata: { project_id: project.id, request_id: reqId },
+          });
+        }
       }
     });
 

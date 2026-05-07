@@ -1,7 +1,10 @@
 require('dotenv').config({ path: '../../.env' });
 const express = require('express');
 const cors = require('cors');
+const http = require('http');
+const { WebSocketServer } = require('ws');
 const db = require('./db/knex');
+const { attachWebSocketServer, startNotificationListener } = require('./realtime/notificationsHub');
 
 const app = express();
 const PORT = process.env.USER_SERVICE_PORT || 3001;
@@ -47,8 +50,14 @@ app.use((err, req, res, next) => {
 
 // ─── Start ───────────────────────────────────────────────
 if (require.main === module) {
-  app.listen(PORT, () => {
-    console.log(`[user-service] Running on port ${PORT}`);
+  const server = http.createServer(app);
+  const wss = new WebSocketServer({ server, path: '/ws' });
+
+  attachWebSocketServer(wss, db);
+  startNotificationListener(db);
+
+  server.listen(PORT, () => {
+    console.log(`[user-service] Running on port ${PORT} (HTTP + WS)`);
   });
 }
 

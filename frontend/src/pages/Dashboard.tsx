@@ -9,39 +9,50 @@ interface UserProfile {
   role: string;
 }
 
+interface NotificationItem {
+  id: string;
+  title: string;
+  message: string;
+  is_read: boolean;
+  created_at: string;
+}
+
 export const Dashboard = () => {
-  const { user } = useAuthStore();
+  const { user, token } = useAuthStore();
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [groupsCount, setGroupsCount] = useState<number>(0);
   const [projectsCount, setProjectsCount] = useState<number>(0);
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [unreadCount, setUnreadCount] = useState<number>(0);
   
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
+
+  const fetchNotifications = async () => {
+    const notificationsRes = await authApi.get('/users/notifications?limit=5');
+    setNotifications(notificationsRes.data.notifications || []);
+    setUnreadCount(notificationsRes.data.unread_count || 0);
+  };
 
   useEffect(() => {
     const fetchDashboardData = async () => {
       setIsLoading(true);
       setError('');
       try {
-        // Fetch User Profile
         const profileRes = await authApi.get('/users/me');
         setProfile(profileRes.data.user);
 
-        // Fetch Groups Count (for students, it returns their groups)
-        // If it's a faculty or admin, it might fail or return empty, which is fine, we just default to 0
         try {
           const groupsRes = await projectApi.get('/groups/me');
           setGroupsCount(groupsRes.data.groups?.length || 0);
-        } catch (err) {
-          console.warn('Could not fetch groups (might be faculty)');
+        } catch {
           setGroupsCount(0);
         }
 
-        // Fetch Projects
-        // For students, this gets all open projects. For faculty, it returns all projects they created.
         const projectsRes = await projectApi.get('/projects');
         setProjectsCount(projectsRes.data.projects?.length || 0);
 
+        await fetchNotifications();
       } catch (err: any) {
         console.error('Dashboard fetch error:', err);
         setError(err.response?.data?.error || 'Failed to load dashboard data. Please try again.');
@@ -52,6 +63,35 @@ export const Dashboard = () => {
 
     fetchDashboardData();
   }, []);
+
+  useEffect(() => {
+    if (!token) return;
+    const ws = new WebSocket(`ws://localhost:3001/ws?token=${encodeURIComponent(token)}`);
+
+    ws.onmessage = (event) => {
+      try {
+        const message = JSON.parse(event.data);
+        if (message?.type === 'notifications:update') {
+          setNotifications(message.payload?.notifications || []);
+          setUnreadCount(message.payload?.unread_count || 0);
+        }
+      } catch {
+        // Ignore malformed messages.
+      }
+    };
+
+    return () => ws.close();
+  }, [token]);
+
+  const handleMarkRead = async (id: string) => {
+    try {
+      await authApi.put(`/users/notifications/${id}/read`);
+      setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, is_read: true } : n)));
+      setUnreadCount((prev) => Math.max(0, prev - 1));
+    } catch {
+      // No-op for dashboard quick action.
+    }
+  };
 
   if (isLoading) {
     return (
@@ -72,6 +112,7 @@ export const Dashboard = () => {
   const stats = [
     { name: 'My Groups', value: groupsCount, icon: Users, color: 'text-emerald-600', bg: 'bg-emerald-100' },
     { name: 'My Projects', value: projectsCount, icon: FolderKanban, color: 'text-blue-600', bg: 'bg-blue-100' },
+    { name: 'Unread Alerts', value: unreadCount, icon: ShieldAlert, color: 'text-violet-600', bg: 'bg-violet-100' },
   ];
 
   return (
@@ -143,12 +184,26 @@ export const Dashboard = () => {
           </div>
 
           <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
-            <h3 className="text-lg font-semibold text-slate-900 mb-4">Recent Activity</h3>
-            <div className="bg-slate-50 border border-slate-100 rounded-xl p-8 text-center">
-              <p className="text-sm text-slate-500">
-                Activity feed will be available soon. Explore your groups and projects to get started!
-              </p>
-            </div>
+            <h3 className="text-lg font-semibold text-slate-900 mb-4">Recent Notifications</h3>
+            {notifications.length === 0 ? (
+              <div className="bg-slate-50 border border-slate-100 rounded-xl p-8 text-center">
+                <p className="text-sm text-slate-500">No notifications yet.</p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {notifications.map((n) => (
+                  <button
+                    key={n.id}
+                    onClick={() => !n.is_read && handleMarkRead(n.id)}
+                    className={`w-full text-left p-3 rounded-xl border ${n.is_read ? 'bg-white border-slate-200' : 'bg-violet-50 border-violet-200'}`}
+                  >
+                    <p className="text-sm font-medium text-slate-900">{n.title}</p>
+                    <p className="text-xs text-slate-600 mt-0.5">{n.message}</p>
+                    <p className="text-xs text-slate-400 mt-1">{new Date(n.created_at).toLocaleString()}</p>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         </div>
 

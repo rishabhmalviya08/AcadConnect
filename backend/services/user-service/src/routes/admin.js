@@ -71,8 +71,7 @@ router.get('/users/:id', async (req, res, next) => {
         .where({ user_id: user.id })
         .first();
       const { count } = await db('project_requests as pr')
-        .join('projects as p', 'pr.project_id', 'p.id')
-        .where('p.faculty_id', user.id)
+        .where('pr.faculty_id', user.id)
         .andWhere('pr.status', 'accepted')
         .count('pr.id as count')
         .first();

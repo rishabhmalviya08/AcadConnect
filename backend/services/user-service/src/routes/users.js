@@ -2,6 +2,7 @@ const express = require('express');
 const db = require('../db/knex');
 const { authenticate } = require('../middleware/auth');
 const { createError } = require('../utils/errors');
+const { pushToUser } = require('../realtime/notificationsHub');
 
 const router = express.Router();
 
@@ -41,8 +42,7 @@ router.get('/me', async (req, res, next) => {
 
       // Derive current mentee count via accepted project_requests
       const { count } = await db('project_requests as pr')
-        .join('projects as p', 'pr.project_id', 'p.id')
-        .where('p.faculty_id', user.id)
+        .where('pr.faculty_id', user.id)
         .andWhere('pr.status', 'accepted')
         .count('pr.id as count')
         .first();
@@ -108,6 +108,56 @@ router.put('/me', async (req, res, next) => {
     });
 
     res.status(200).json({ message: 'Profile updated successfully' });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * GET /api/users/notifications
+ * Returns the authenticated user's notifications.
+ * Query: ?unread_only=true&limit=20
+ */
+router.get('/notifications', async (req, res, next) => {
+  try {
+    const unreadOnly = req.query.unread_only === 'true';
+    const limit = Math.min(Number(req.query.limit) || 50, 100);
+
+    const query = db('notifications')
+      .select('id', 'type', 'title', 'message', 'metadata', 'is_read', 'created_at')
+      .where({ user_id: req.user.id })
+      .orderBy('created_at', 'desc')
+      .limit(limit);
+
+    if (unreadOnly) query.andWhere('is_read', false);
+
+    const [notifications, unreadRow] = await Promise.all([
+      query,
+      db('notifications').where({ user_id: req.user.id, is_read: false }).count('id as count').first(),
+    ]);
+
+    res.status(200).json({
+      notifications,
+      unread_count: Number(unreadRow?.count || 0),
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * PUT /api/users/notifications/:id/read
+ * Mark a notification as read.
+ */
+router.put('/notifications/:id/read', async (req, res, next) => {
+  try {
+    const updated = await db('notifications')
+      .where({ id: req.params.id, user_id: req.user.id })
+      .update({ is_read: true });
+
+    if (!updated) throw createError(404, 'Notification not found');
+    pushToUser(db, req.user.id).catch(() => {});
+    res.status(200).json({ message: 'Notification marked as read' });
   } catch (err) {
     next(err);
   }

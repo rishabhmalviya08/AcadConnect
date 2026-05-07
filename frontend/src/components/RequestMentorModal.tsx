@@ -1,19 +1,11 @@
 import { useState, useEffect } from 'react';
 import { projectApi } from '../services/api';
-import { X, Loader2, FolderKanban, Users } from 'lucide-react';
+import { X, Loader2, FolderKanban } from 'lucide-react';
 
 interface Project {
   id: string;
   title: string;
   status: string;
-  faculty_name: string;
-}
-
-interface Group {
-  group_id: string;
-  name: string;
-  my_status: string;
-  members: { name: string; email: string; status: string }[];
 }
 
 interface RequestMentorModalProps {
@@ -21,13 +13,12 @@ interface RequestMentorModalProps {
   onClose: () => void;
   onRequested: () => void;
   facultyName: string;
+  facultyId: string;
 }
 
-export const RequestMentorModal = ({ isOpen, onClose, onRequested, facultyName }: RequestMentorModalProps) => {
+export const RequestMentorModal = ({ isOpen, onClose, onRequested, facultyName, facultyId }: RequestMentorModalProps) => {
   const [projects, setProjects] = useState<Project[]>([]);
-  const [groups, setGroups] = useState<Group[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState('');
-  const [selectedGroupId, setSelectedGroupId] = useState('');
   const [snippet, setSnippet] = useState('');
   const [wordCount, setWordCount] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
@@ -37,7 +28,6 @@ export const RequestMentorModal = ({ isOpen, onClose, onRequested, facultyName }
   useEffect(() => {
     if (isOpen) {
       setSelectedProjectId('');
-      setSelectedGroupId('');
       setSnippet('');
       setWordCount(0);
       setError('');
@@ -48,24 +38,12 @@ export const RequestMentorModal = ({ isOpen, onClose, onRequested, facultyName }
   const fetchData = async () => {
     setIsLoadingData(true);
     try {
-      const [projectsRes, groupsRes] = await Promise.all([
-        projectApi.get('/projects'),
-        projectApi.get('/groups/me'),
-      ]);
-
-      // Filter to only open projects by this faculty
+      const projectsRes = await projectApi.get('/projects');
       const allProjects: Project[] = projectsRes.data.projects || [];
-      const facultyProjects = allProjects.filter(
-        (p) => p.faculty_name === facultyName && p.status === 'open'
-      );
-      setProjects(facultyProjects);
-
-      // Filter to groups the user has accepted
-      const allGroups: Group[] = groupsRes.data.groups || [];
-      setGroups(allGroups.filter((g) => g.my_status === 'accepted'));
+      // Student can only send requests from open projects they lead.
+      setProjects(allProjects.filter((p) => p.status === 'open'));
     } catch {
       setProjects([]);
-      setGroups([]);
     } finally {
       setIsLoadingData(false);
     }
@@ -80,16 +58,18 @@ export const RequestMentorModal = ({ isOpen, onClose, onRequested, facultyName }
     e.preventDefault();
     setError('');
 
+    if (!facultyId) { setError('Selected faculty is invalid. Please retry.'); return; }
     if (!selectedProjectId) { setError('Please select a project.'); return; }
-    if (!selectedGroupId) { setError('Please select a group.'); return; }
+    if (!snippet.trim()) { setError('Please enter your application snippet.'); return; }
     if (wordCount > 200) { setError('Snippet cannot exceed 200 words.'); return; }
 
     setIsLoading(true);
     try {
       await projectApi.post('/requests', {
         project_id: selectedProjectId,
-        group_id: selectedGroupId,
-        snippet,
+        faculty_id: facultyId,
+        faculty_name: facultyName,
+        snippet: snippet.trim(),
       });
       onRequested();
       onClose();
@@ -135,7 +115,7 @@ export const RequestMentorModal = ({ isOpen, onClose, onRequested, facultyName }
               </label>
               {projects.length === 0 ? (
                 <div className="bg-amber-50 text-amber-700 p-3 rounded-lg text-sm">
-                  {facultyName} has no open projects right now.
+                  No open student projects available to request mentorship for.
                 </div>
               ) : (
                 <select
@@ -152,37 +132,6 @@ export const RequestMentorModal = ({ isOpen, onClose, onRequested, facultyName }
               )}
             </div>
 
-            {/* Group Selection */}
-            <div>
-              <label className="flex items-center gap-1.5 text-sm font-medium text-slate-700 mb-1">
-                <Users className="w-4 h-4 text-slate-400" />
-                Select Your Group
-              </label>
-              {groups.length === 0 ? (
-                <div className="bg-amber-50 text-amber-700 p-3 rounded-lg text-sm">
-                  You don't have any eligible groups. Create one with 3–5 accepted members first.
-                </div>
-              ) : (
-                <select
-                  required
-                  value={selectedGroupId}
-                  onChange={(e) => setSelectedGroupId(e.target.value)}
-                  className="block w-full px-3 py-2 border border-slate-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-primary-500 text-sm"
-                >
-                  <option value="">Choose a group...</option>
-                  {groups.map((g) => {
-                    const accepted = g.members.filter((m) => m.status === 'accepted').length;
-                    return (
-                      <option key={g.group_id} value={g.group_id}>
-                        {g.name} ({accepted} accepted members)
-                      </option>
-                    );
-                  })}
-                </select>
-              )}
-            </div>
-
-            {/* Snippet */}
             <div>
               <div className="flex items-center justify-between mb-1">
                 <label className="text-sm font-medium text-slate-700">Application Snippet</label>
@@ -210,7 +159,7 @@ export const RequestMentorModal = ({ isOpen, onClose, onRequested, facultyName }
               </button>
               <button
                 type="submit"
-                disabled={isLoading || projects.length === 0 || groups.length === 0}
+                disabled={isLoading || projects.length === 0 || !facultyId}
                 className="inline-flex items-center justify-center px-4 py-2 text-sm font-medium text-white bg-primary-600 border border-transparent rounded-lg hover:bg-primary-700 disabled:opacity-50 transition-colors"
               >
                 {isLoading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}

@@ -8,8 +8,10 @@ import {
   ClipboardList,
   Settings, 
   LogOut,
-  GraduationCap
+  GraduationCap,
+  ShieldCheck
 } from 'lucide-react';
+import { HelpChat } from '../components/HelpChat';
 
 export const MainLayout = () => {
   const { user, logout } = useAuthStore();
@@ -34,6 +36,9 @@ export const MainLayout = () => {
     // Faculty-only
     ...(role === 'faculty' ? [
       { name: 'Requests', path: '/requests', icon: ClipboardList },
+    ] : []),
+    ...(role === 'admin' ? [
+      { name: 'Admin', path: '/admin', icon: ShieldCheck },
     ] : []),
     { name: 'Settings', path: '/settings', icon: Settings },
   ];
@@ -107,6 +112,8 @@ export const MainLayout = () => {
           <Outlet />
         </div>
       </main>
+
+      <HelpChat />
     </div>
   );
 };

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import { projectApi, aiApi } from '../services/api';
+import { projectApi } from '../services/api';
+import { useAuthStore } from '../store/authStore';
 import {
   X, Loader2, Calendar, Users, Target,
   Sparkles, ThumbsUp, AlertTriangle, Lightbulb, FileText, Gauge
@@ -13,6 +14,14 @@ interface AiFeedback {
   summary: string;
 }
 
+interface Milestone {
+  id: string;
+  title: string;
+  description?: string;
+  due_date?: string;
+  completed: boolean;
+}
+
 interface ProjectDetailsModalProps {
   projectId: string | null;
   isOpen: boolean;
@@ -20,6 +29,7 @@ interface ProjectDetailsModalProps {
 }
 
 export const ProjectDetailsModal = ({ projectId, isOpen, onClose }: ProjectDetailsModalProps) => {
+  const { user } = useAuthStore();
   const [project, setProject] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
@@ -28,11 +38,18 @@ export const ProjectDetailsModal = ({ projectId, isOpen, onClose }: ProjectDetai
   const [aiFeedback, setAiFeedback] = useState<AiFeedback | null>(null);
   const [isLoadingAi, setIsLoadingAi] = useState(false);
   const [aiError, setAiError] = useState('');
+  const [milestones, setMilestones] = useState<Milestone[]>([]);
+  const [newMilestoneTitle, setNewMilestoneTitle] = useState('');
+  const [newMilestoneDueDate, setNewMilestoneDueDate] = useState('');
+  const [isSavingMilestone, setIsSavingMilestone] = useState(false);
+  const [milestoneError, setMilestoneError] = useState('');
 
   useEffect(() => {
     if (isOpen && projectId) {
       setAiFeedback(null);
       setAiError('');
+      setMilestones([]);
+      setMilestoneError('');
       const fetchProject = async () => {
         setIsLoading(true);
         setError('');
@@ -47,8 +64,19 @@ export const ProjectDetailsModal = ({ projectId, isOpen, onClose }: ProjectDetai
       };
 
       fetchProject();
+      fetchMilestones();
     }
   }, [isOpen, projectId]);
+
+  const fetchMilestones = async () => {
+    if (!projectId) return;
+    try {
+      const response = await projectApi.get(`/projects/${projectId}/progress`);
+      setMilestones(response.data.milestones || []);
+    } catch (err: any) {
+      setMilestoneError(err.response?.data?.error || 'Failed to load milestones');
+    }
+  };
 
   const handleGetAiFeedback = async () => {
     if (!projectId) return;
@@ -57,7 +85,7 @@ export const ProjectDetailsModal = ({ projectId, isOpen, onClose }: ProjectDetai
     setAiFeedback(null);
 
     try {
-      const response = await aiApi.post(`/projects/${projectId}/ai-feedback`);
+      const response = await projectApi.post(`/projects/${projectId}/ai-feedback`);
       setAiFeedback(response.data);
     } catch (err: any) {
       setAiError(err.response?.data?.error || 'Failed to get AI feedback. The AI service may not be running.');
@@ -69,15 +97,48 @@ export const ProjectDetailsModal = ({ projectId, isOpen, onClose }: ProjectDetai
   if (!isOpen) return null;
 
   const getScoreColor = (score: number) => {
-    if (score >= 80) return 'text-emerald-600';
-    if (score >= 60) return 'text-amber-600';
+    if (score >= 8) return 'text-emerald-600';
+    if (score >= 6) return 'text-amber-600';
     return 'text-red-500';
   };
 
   const getScoreBg = (score: number) => {
-    if (score >= 80) return 'bg-emerald-50 border-emerald-200';
-    if (score >= 60) return 'bg-amber-50 border-amber-200';
+    if (score >= 8) return 'bg-emerald-50 border-emerald-200';
+    if (score >= 6) return 'bg-amber-50 border-amber-200';
     return 'bg-red-50 border-red-200';
+  };
+
+  const handleCreateMilestone = async () => {
+    if (!projectId) return;
+    if (!newMilestoneTitle.trim()) {
+      setMilestoneError('Milestone title is required');
+      return;
+    }
+    setIsSavingMilestone(true);
+    setMilestoneError('');
+    try {
+      await projectApi.post(`/projects/${projectId}/progress`, {
+        title: newMilestoneTitle.trim(),
+        due_date: newMilestoneDueDate || null,
+      });
+      setNewMilestoneTitle('');
+      setNewMilestoneDueDate('');
+      await fetchMilestones();
+    } catch (err: any) {
+      setMilestoneError(err.response?.data?.error || 'Failed to create milestone');
+    } finally {
+      setIsSavingMilestone(false);
+    }
+  };
+
+  const handleMarkComplete = async (milestoneId: string) => {
+    if (!projectId) return;
+    try {
+      await projectApi.put(`/projects/${projectId}/progress/${milestoneId}`, { completed: true });
+      await fetchMilestones();
+    } catch (err: any) {
+      setMilestoneError(err.response?.data?.error || 'Failed to update milestone');
+    }
   };
 
   return (
@@ -194,7 +255,7 @@ export const ProjectDetailsModal = ({ projectId, isOpen, onClose }: ProjectDetai
                       <div>
                         <p className="text-xs font-medium text-slate-500 uppercase tracking-wider">Relevance Score</p>
                         <p className={`text-3xl font-bold ${getScoreColor(aiFeedback.relevance_score)}`}>
-                          {aiFeedback.relevance_score}<span className="text-lg text-slate-400">/100</span>
+                          {aiFeedback.relevance_score}<span className="text-lg text-slate-400">/10</span>
                         </p>
                       </div>
                     </div>
@@ -261,6 +322,64 @@ export const ProjectDetailsModal = ({ projectId, isOpen, onClose }: ProjectDetai
                         </ul>
                       </div>
                     )}
+                  </div>
+                )}
+              </div>
+
+              <div className="border-t border-slate-100 pt-6 space-y-3">
+                <h5 className="text-sm font-semibold text-slate-900 uppercase tracking-wider">Milestones</h5>
+                {milestoneError && (
+                  <div className="bg-red-50 text-red-600 p-3 rounded-lg text-sm">{milestoneError}</div>
+                )}
+                {user?.role === 'faculty' && (
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    <input
+                      value={newMilestoneTitle}
+                      onChange={(e) => setNewMilestoneTitle(e.target.value)}
+                      placeholder="Milestone title"
+                      className="sm:col-span-2 px-3 py-2 border border-slate-300 rounded-lg text-sm"
+                    />
+                    <input
+                      type="date"
+                      value={newMilestoneDueDate}
+                      onChange={(e) => setNewMilestoneDueDate(e.target.value)}
+                      className="px-3 py-2 border border-slate-300 rounded-lg text-sm"
+                    />
+                    <button
+                      onClick={handleCreateMilestone}
+                      disabled={isSavingMilestone}
+                      className="sm:col-span-3 px-3 py-2 text-sm text-white bg-primary-600 rounded-lg disabled:opacity-50"
+                    >
+                      {isSavingMilestone ? 'Adding...' : 'Add Milestone'}
+                    </button>
+                  </div>
+                )}
+                {milestones.length === 0 ? (
+                  <p className="text-sm text-slate-500">No milestones yet.</p>
+                ) : (
+                  <div className="space-y-2">
+                    {milestones.map((m) => (
+                      <div key={m.id} className="p-3 border border-slate-200 rounded-lg flex items-center justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-medium text-slate-900">{m.title}</p>
+                          <p className="text-xs text-slate-500">
+                            {m.due_date ? `Due ${new Date(m.due_date).toLocaleDateString()}` : 'No due date'}
+                          </p>
+                        </div>
+                        {m.completed ? (
+                          <span className="text-xs font-medium text-emerald-700 bg-emerald-100 px-2 py-1 rounded-full">Completed</span>
+                        ) : user?.role === 'faculty' ? (
+                          <button
+                            onClick={() => handleMarkComplete(m.id)}
+                            className="text-xs font-medium text-blue-700 bg-blue-100 px-2 py-1 rounded-full"
+                          >
+                            Mark Complete
+                          </button>
+                        ) : (
+                          <span className="text-xs text-slate-500">Pending</span>
+                        )}
+                      </div>
+                    ))}
                   </div>
                 )}
               </div>

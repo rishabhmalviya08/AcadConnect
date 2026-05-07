@@ -25,7 +25,7 @@ app.get('/health', async (req, res) => {
 app.use('/api/projects',  require('./routes/projects'));
 app.use('/api/groups',    require('./routes/groups'));
 app.use('/api/requests',  require('./routes/requests'));
-// app.use('/api/progress',  require('./routes/progress')); // Step 6
+app.use('/api', require('./routes/progress'));
 
 // ─── 404 Handler ─────────────────────────────────────────
 app.use((req, res) => {

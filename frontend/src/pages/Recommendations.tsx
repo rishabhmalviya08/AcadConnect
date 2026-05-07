@@ -4,7 +4,9 @@ import { Search, Loader2, Star, BookOpen, Sparkles, GraduationCap, Send, CheckCi
 import { RequestMentorModal } from '../components/RequestMentorModal';
 
 interface FacultyRecommendation {
+  faculty_id?: string;
   faculty_name: string;
+  name?: string;
   research_areas: string[];
   score: number;
   [key: string]: any;
@@ -20,7 +22,7 @@ export const Recommendations = () => {
   const [hasSearched, setHasSearched] = useState(false);
 
   // Request Mentor modal
-  const [requestFaculty, setRequestFaculty] = useState<string | null>(null);
+  const [requestFaculty, setRequestFaculty] = useState<{ id: string; name: string } | null>(null);
   const [requestedFaculty, setRequestedFaculty] = useState<Set<string>>(new Set());
 
   const handleSearch = async (e: React.FormEvent) => {
@@ -37,8 +39,12 @@ export const Recommendations = () => {
 
       const response = await recommendationApi.get('/recommend/faculty', { params });
       const data = response.data;
-      const recs: FacultyRecommendation[] = Array.isArray(data) ? data : data.recommendations || data.results || [];
-      setResults(recs);
+      const rawRecs: FacultyRecommendation[] = Array.isArray(data) ? data : data.recommendations || data.results || [];
+      const normalized = rawRecs.map((rec) => ({
+        ...rec,
+        faculty_name: rec.faculty_name || rec.name || 'Unknown Faculty',
+      }));
+      setResults(normalized);
     } catch (err: any) {
       console.error('Recommendation error:', err);
       setError(err.response?.data?.error || 'Failed to fetch recommendations. The recommendation service may not be running.');
@@ -225,7 +231,7 @@ export const Recommendations = () => {
                       </div>
                     ) : (
                       <button
-                        onClick={() => setRequestFaculty(faculty.faculty_name)}
+                        onClick={() => setRequestFaculty({ id: faculty.faculty_id || '', name: faculty.faculty_name })}
                         className="w-full inline-flex items-center justify-center gap-1.5 px-4 py-2.5 text-sm font-medium text-white bg-primary-600 rounded-xl hover:bg-primary-700 transition-colors shadow-sm"
                       >
                         <Send className="w-4 h-4" />
@@ -244,8 +250,9 @@ export const Recommendations = () => {
       <RequestMentorModal
         isOpen={!!requestFaculty}
         onClose={() => setRequestFaculty(null)}
-        onRequested={() => requestFaculty && handleRequestSubmitted(requestFaculty)}
-        facultyName={requestFaculty || ''}
+        onRequested={() => requestFaculty && handleRequestSubmitted(requestFaculty.name)}
+        facultyName={requestFaculty?.name || ''}
+        facultyId={requestFaculty?.id || ''}
       />
     </div>
   );

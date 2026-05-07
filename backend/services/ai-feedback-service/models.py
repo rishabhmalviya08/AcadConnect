@@ -1,8 +1,8 @@
 """
 models.py — Pydantic schemas for the AI Feedback Service
 """
-from pydantic import BaseModel
-from typing import Optional
+from pydantic import BaseModel, Field, field_validator
+from typing import Optional, Literal
 from datetime import datetime
 
 
@@ -42,3 +42,24 @@ class FeedbackSyncResponse(BaseModel):
     gaps: list[str]
     suggestions: list[str]
     summary: str
+
+
+class ChatTurn(BaseModel):
+    role: Literal["user", "assistant"]
+    content: str = Field(..., min_length=1, max_length=4000)
+
+
+class FAQChatRequest(BaseModel):
+    message: str = Field(..., min_length=1, max_length=2000)
+    history: list[ChatTurn] = Field(default_factory=list)
+
+    @field_validator("history", mode="before")
+    @classmethod
+    def cap_history(cls, v):
+        if not isinstance(v, list):
+            return []
+        return v[-20:]
+
+
+class FAQChatResponse(BaseModel):
+    reply: str

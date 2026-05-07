@@ -1,124 +1,158 @@
-# AcadConnect Backend — Step 1: Environment & Database Setup
+# AcadConnect Backend
 
-## Folder Structure
+Node.js **Express** services (PostgreSQL via Knex) plus Python **FastAPI** services (OpenAI, optional MongoDB for stored AI feedback). Local development typically uses **Docker Compose** for databases and optionally for Python containers.
+
+## Architecture
 
 ```
 backend/
-├── docker-compose.yml          # PostgreSQL 15 + MongoDB 7
-├── .env.example                # Copy to .env and fill values
-├── services/
-│   ├── user-service/           # Auth, profiles, admin (port 3001)
-│   │   ├── package.json
-│   │   ├── knexfile.js
-│   │   └── src/
-│   │       ├── index.js        # Express entry point
-│   │       ├── db/knex.js      # Knex singleton
-│   │       └── migrations/     # 001–006 SQL schema files
-│   └── project-service/        # Projects, requests, milestones (port 3002)
-│       ├── package.json
-│       └── src/index.js
-└── README.md
+├── docker-compose.yml       # postgres, mongo, ai-feedback-service, recommendation-service
+├── .env.example             # Copy to .env (repo root for compose: backend/.env)
+└── services/
+    ├── user-service/        # Port 3001 — auth, profiles, admin, notifications API, WebSocket
+    ├── project-service/     # Port 3002 — groups, projects, requests, milestones/progress
+    ├── ai-feedback-service/   # Port 8001 — AI project feedback, FAQ help chat
+    └── recommendation-service/ # Port 8002 — faculty recommendations (embeddings + cosine similarity)
 ```
+
+### User service (`3001`)
+
+- **REST:** `/api/auth/*`, `/api/users/*`, `/api/admin/*`
+- **Notifications:** `GET /api/users/notifications`, `PUT /api/users/notifications/:id/read`
+- **WebSocket:** `ws://localhost:3001/ws?token=<JWT>` — pushes `notifications:update` when a row is inserted into `notifications` (Postgres `LISTEN` / `NOTIFY` on channel `acadconnect_notifications`)
+- **Health:** `GET /health`
+
+### Project service (`3002`)
+
+- **Groups:** `POST /api/groups`, `GET /api/groups/me`, `PUT /api/groups/:id/accept-invite`
+- **Projects:** `GET/POST /api/projects`, `GET /api/projects/:id`, `PUT /api/projects/:id` (faculty: mark `closed`), `POST /api/projects/:id/ai-feedback` (proxies to AI service)
+- **Requests:** `POST /api/requests` (body: `project_id`, `faculty_id` or `faculty_name`, `snippet`), `GET /api/requests/faculty`, `PUT /api/requests/:id/status`
+- **Progress / milestones:** `GET/POST /api/projects/:id/progress`, `PUT /api/projects/:id/progress/:progressId`
+- **Health:** `GET /health`
+
+### AI feedback service (`8001`)
+
+- **Feedback:** `POST /feedback/generate`, `GET /feedback/{request_id}`, `POST /feedback/generate-sync`
+- **FAQ chat:** `POST /api/chat/faq` — onboarding-only answers from `faq_kb.md`; optional `Authorization: Bearer` for role-aware hints; rate limit `CHAT_RATE_LIMIT_PER_MINUTE` (default 20) per user id or client IP
+- **CORS:** Dev origins for Vite (override with `CORS_ALLOW_ORIGINS` CSV)
+- **Env:** `OPENAI_API_KEY`, `JWT_SECRET` (for chat + feedback rate-limit identity), `CHAT_RATE_LIMIT_PER_MINUTE` (FAQ), `OPENAI_FEEDBACK_RATE_LIMIT_PER_MINUTE` (project feedback OpenAI calls, default 8), optional `OPENAI_CHAT_MODEL`
+
+### Recommendation service (`8002`)
+
+- **Health:** `GET /health`
+- **Index:** `POST /index/sync-all` — load faculty from Postgres into memory
+- **Recommend:** `GET /recommend/faculty?skills=&interests=&student_id=&top_k=`
 
 ## Prerequisites
 
-- [Docker Desktop](https://www.docker.com/products/docker-desktop/) installed and running
-- [Node.js 20+](https://nodejs.org/) and npm
+- Docker Desktop (for Postgres + MongoDB, optional Python containers)
+- Node.js 20+ and npm
+- Python 3.11+ if running FastAPI services locally without Docker
 
-## Quick Start
-
-### 1. Configure environment
+## Environment
 
 ```bash
 cd backend
 cp .env.example .env
-# Open .env and update passwords and secrets
+# Set POSTGRES_*, MONGO_*, JWT_SECRET, OPENAI_API_KEY, etc.
 ```
 
-> **Do not** commit `.env` to version control. It is already in `.gitignore`.
+Compose loads `backend/.env`. **Do not commit `.env`.**
 
-### 2. Start databases
+Important variables:
+
+| Variable | Used by |
+|----------|---------|
+| `JWT_SECRET` | user-service, project-service (JWT verify), ai-feedback-service (FAQ chat + optional role) |
+| `OPENAI_API_KEY` | ai-feedback-service, recommendation-service |
+| `CHAT_RATE_LIMIT_PER_MINUTE` | ai-feedback-service FAQ chat |
+| `MONGO_URI` / `MONGO_DB` | ai-feedback-service (persisted feedback) |
+
+## Start databases (Docker)
 
 ```bash
+cd backend
 docker compose up -d
-docker compose ps          # both postgres and mongo should show "Up (healthy)"
+docker compose ps   # postgres + mongo healthy
 ```
 
-### 3. Install dependencies
+## Install & migrate (Node)
 
 ```bash
-# User Service
-cd services/user-service
-npm install
+cd services/user-service && npm install
+cd ../project-service && npm install
 
-# Project Service
-cd ../project-service
-npm install
-```
-
-### 4. Run database migrations
-
-```bash
-# From services/user-service
+# Migrations live in user-service (single Knex DB)
+cd ../user-service
 npx knex migrate:latest
 ```
 
-Expected output:
+Migrations include (among others): users, student/faculty profiles, projects, project_requests, progress, groups, audit_logs, **notifications** + **snippet** on requests, **pg_notify** trigger for real-time notification delivery.
 
-```
-Batch 1 run: 6 migrations
-001_create_users.js
-002_create_student_profiles.js
-003_create_faculty_profiles.js
-004_create_projects.js
-005_create_project_requests.js
-006_create_progress.js
-```
-
-### 5. Verify tables
+## Verify database
 
 ```bash
 docker exec -it acadconnect-postgres psql -U acadconnect -d acadconnect -c "\dt"
 ```
 
-Expected: `users`, `student_profiles`, `faculty_profiles`, `projects`, `project_requests`, `progress`
+You should see tables such as: `users`, `student_profiles`, `faculty_profiles`, `groups`, `group_members`, `projects`, `project_requests`, `progress`, `audit_logs`, `notifications`, etc.
 
-### 6. Start services
+## Run Node services (local)
 
 ```bash
-# Terminal 1 — User Service
+# Terminal 1
 cd services/user-service && npm run dev
 
-# Terminal 2 — Project Service
+# Terminal 2
 cd services/project-service && npm run dev
 ```
 
-Health checks:
+Health:
 
 ```bash
-curl http://localhost:3001/health   # {"status":"ok","service":"user-service","db":"connected"}
-curl http://localhost:3002/health   # {"status":"ok","service":"project-service"}
+curl http://localhost:3001/health
+curl http://localhost:3002/health
 ```
 
-## Database Schema Overview
+## Run Python services
 
+**Option A — Docker Compose** (after `docker compose up -d` including `ai-feedback-service` and `recommendation-service`):
+
+- Ensure `JWT_SECRET` is passed into the AI service container (see `docker-compose.yml`).
+- Rebuild/restart if `requirements.txt` changed (`pip install` runs on container start).
+
+**Option B — Local venv**
+
+```bash
+cd services/ai-feedback-service
+python -m venv .venv && source .venv/bin/activate  # Windows: .venv\Scripts\activate
+pip install -r requirements.txt
+uvicorn main:app --reload --port 8001
+
+cd ../recommendation-service
+# same pattern on port 8002
 ```
-users
-  └─< student_profiles  (eligibility_status: eligible | probation | ineligible)
-  └─< faculty_profiles  (max_capacity, research_areas[])
-  └─< projects          (status: open | in_progress | closed)
-        └─< project_requests  (snippet, status: pending | accepted | rejected, feedback_ref→MongoDB)
-        └─< progress          (milestones: title, due_date, completed)
-```
 
-> `faculty_profiles` has **no** `current_mentees` counter. Mentee count and list
-> are derived at query time via `project_requests JOIN projects WHERE status='accepted'`.
+## Schema overview (simplified)
 
-## Tech Stack
+- **Projects** belong to **groups** (`projects.group_id`). Status: `open` → `in_progress` (accepted request) → `closed`.
+- **project_requests** link a **project** to **faculty_id**, with `snippet`, `status`: `pending` | `accepted` | `rejected`. Capacity enforced via `faculty_profiles.max_capacity` and derived mentee counts.
+- **progress** rows are milestones per `project_id`.
+- **notifications** store in-app alerts (`is_read`, `metadata` JSONB). Inserts trigger `NOTIFY` for WebSocket pushes.
+- **audit_logs** record admin actions (e.g. eligibility changes).
+
+Faculty mentee counts use **`project_requests.faculty_id`** with `status = 'accepted'` (not `projects.faculty_id`).
+
+## Optional scripts
+
+- `backend/test_recommendations.js` — smoke test recommendation flow (creates faculty users via user API, syncs recommendations service).
+
+## Tech stack summary
 
 | Layer | Technology |
-|---|---|
-| Databases | PostgreSQL 15, MongoDB 7 |
-| ORM/Migrations | Knex.js |
-| Runtime | Node.js 20 / Express 4 |
-| Containerisation | Docker Compose |
+|-------|-------------|
+| API (core) | Node.js, Express, Knex, PostgreSQL |
+| AI / chat | Python, FastAPI, OpenAI, Motor/MongoDB (feedback persistence) |
+| Recommendations | Python, FastAPI, OpenAI embeddings, in-memory cosine similarity |
+| Realtime | `ws` (user-service), Postgres `LISTEN` / `NOTIFY` |
+| Containers | Docker Compose |
