@@ -14,6 +14,7 @@ module.exports = {
       user: process.env.POSTGRES_USER || 'acadconnect',
       password: process.env.POSTGRES_PASSWORD || 'yourStrongPassword',
       database: process.env.POSTGRES_DB || 'acadconnect',
+      ssl: process.env.POSTGRES_HOST && process.env.POSTGRES_HOST !== 'localhost' ? { rejectUnauthorized: false } : false,
     },
     migrations: {
       directory: './src/migrations',

@@ -42,12 +42,15 @@ def cosine_similarity(a: list[float], b: list[float]) -> float:
 
 # ── Postgres helper ──────────────────────────────────────────────────
 def get_pg_connection():
+    host = os.getenv("POSTGRES_HOST", "localhost")
+    sslmode = "require" if host != "localhost" else "prefer"
     return psycopg2.connect(
-        host=os.getenv("POSTGRES_HOST", "localhost"),
+        host=host,
         port=int(os.getenv("POSTGRES_PORT", 5432)),
         user=os.getenv("POSTGRES_USER", "acadconnect"),
         password=os.getenv("POSTGRES_PASSWORD", "yourStrongPassword"),
         database=os.getenv("POSTGRES_DB", "acadconnect"),
+        sslmode=sslmode,
     )
 
 
