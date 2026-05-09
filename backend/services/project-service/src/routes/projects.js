@@ -49,6 +49,54 @@ router.get('/', authenticate, async (req, res, next) => {
 });
 
 /**
+ * GET /api/projects/me
+ * List only projects associated with the authenticated user.
+ * Students: Projects in groups they belong to.
+ * Faculty: Projects they have an accepted request for.
+ */
+router.get('/me', authenticate, async (req, res, next) => {
+  try {
+    let projects = [];
+
+    if (req.user.role === 'student') {
+      projects = await db('projects as p')
+        .join('groups as g', 'p.group_id', 'g.id')
+        .join('group_members as gm', 'g.id', 'gm.group_id')
+        .select(
+          'p.id',
+          'p.title',
+          'p.description',
+          'p.status',
+          'p.created_at',
+          'g.name as group_name'
+        )
+        .where('gm.student_id', req.user.id)
+        .andWhere('gm.status', 'accepted')
+        .orderBy('p.created_at', 'desc');
+    } else if (req.user.role === 'faculty') {
+      projects = await db('projects as p')
+        .join('groups as g', 'p.group_id', 'g.id')
+        .join('project_requests as pr', 'p.id', 'pr.project_id')
+        .select(
+          'p.id',
+          'p.title',
+          'p.description',
+          'p.status',
+          'p.created_at',
+          'g.name as group_name'
+        )
+        .where('pr.faculty_id', req.user.id)
+        .andWhere('pr.status', 'accepted')
+        .orderBy('p.created_at', 'desc');
+    }
+
+    res.status(200).json({ projects });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
  * GET /api/projects/:id
  * Get details for a specific project.
  */

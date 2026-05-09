@@ -32,7 +32,7 @@ export const Projects = () => {
     setIsLoading(true);
     setError('');
     try {
-      const response = await projectApi.get('/projects');
+      const response = await projectApi.get('/projects/me');
       setProjects(response.data.projects || []);
     } catch (err: any) {
       console.warn('Failed to fetch projects.', err);

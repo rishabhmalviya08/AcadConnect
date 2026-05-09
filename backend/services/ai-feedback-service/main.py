@@ -86,11 +86,12 @@ app.add_middleware(
 # ─── Routes ────────────────────────────────────────────────────────
 
 @app.get("/health")
+@app.get("/api/health")
 async def health():
     return {"status": "ok", "service": "ai-feedback-service"}
 
 
-@app.post("/feedback/generate", response_model=FeedbackCreatedResponse, status_code=201)
+@app.post("/api/feedback/generate", response_model=FeedbackCreatedResponse, status_code=201)
 async def generate(
     payload: FeedbackRequest,
     request: Request,
@@ -151,7 +152,7 @@ async def generate(
     return FeedbackCreatedResponse(feedback_id=feedback_id, status="generated")
 
 
-@app.get("/feedback/{request_id}", response_model=FeedbackResponse)
+@app.get("/api/feedback/{request_id}", response_model=FeedbackResponse)
 async def get_feedback(request_id: str):
     """
     Retrieves stored feedback for a given request_id.
@@ -179,7 +180,7 @@ async def get_feedback(request_id: str):
     )
 
 
-@app.post("/feedback/generate-sync", response_model=FeedbackSyncResponse)
+@app.post("/api/feedback/generate-sync", response_model=FeedbackSyncResponse)
 async def generate_sync(
     payload: FeedbackSyncRequest,
     request: Request,

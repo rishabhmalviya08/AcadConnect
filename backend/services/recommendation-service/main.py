@@ -14,7 +14,9 @@ import psycopg2.extras
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Query
 from typing import Optional
+import asyncio
 
+from fastapi.middleware.cors import CORSMiddleware
 from models import FacultyRecommendation, RecommendResponse, SyncResponse
 from embeddings import embed_text
 
@@ -83,6 +85,12 @@ def fetch_student_profile(student_id: str) -> dict | None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("Recommendation service started (in-memory mode).")
+    # Trigger initial sync on startup
+    try:
+        # We use sync_all_faculty but call it as an async task so we don't block
+        asyncio.create_task(sync_all_faculty())
+    except Exception as e:
+        logger.error(f"Initial startup sync failed: {e}")
     yield
 
 app = FastAPI(
@@ -91,8 +99,33 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# ── CORS ─────────────────────────────────────────────────────────────
+_cors_origins = [
+    o.strip()
+    for o in os.getenv(
+        "CORS_ALLOW_ORIGINS",
+        "http://localhost:5173,http://127.0.0.1:5173,http://localhost:3000,http://127.0.0.1:3000",
+    ).split(",")
+    if o.strip()
+]
+_default_origins = [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_cors_origins if _cors_origins else _default_origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 
 @app.get("/health")
+@app.get("/api/health")
 async def health():
     return {
         "status": "ok",
@@ -101,7 +134,7 @@ async def health():
     }
 
 
-@app.post("/index/sync-all", response_model=SyncResponse)
+@app.post("/api/index/sync-all", response_model=SyncResponse)
 async def sync_all_faculty():
     """Fetch all faculty from Postgres, embed research areas, store in memory."""
     faculty_list = fetch_all_faculty()
@@ -127,7 +160,43 @@ async def sync_all_faculty():
     )
 
 
-@app.get("/recommend/faculty", response_model=RecommendResponse)
+@app.post("/api/index/sync-one/{faculty_id}", response_model=SyncResponse)
+async def sync_one_faculty(faculty_id: str):
+    """Fetch a single faculty from Postgres, embed, and update in memory."""
+    conn = get_pg_connection()
+    try:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute("""
+                SELECT u.id, u.name, fp.research_areas
+                FROM users u
+                JOIN faculty_profiles fp ON u.id = fp.user_id
+                WHERE u.id = %s AND u.role = 'faculty'
+            """, (faculty_id,))
+            f = cur.fetchone()
+    finally:
+        conn.close()
+
+    if not f:
+        raise HTTPException(404, f"Faculty '{faculty_id}' not found")
+
+    areas = f.get("research_areas") or []
+    if not areas:
+        FACULTY_VECTORS.pop(str(f["id"]), None)
+        return SyncResponse(indexed_count=0, message="Faculty research areas cleared.")
+
+    text = ", ".join(areas)
+    logger.info(f"Sync-one faculty {f['id']} ({f['name']}): '{text}'")
+    vector = embed_text(text)
+    FACULTY_VECTORS[str(f["id"])] = {
+        "name": f["name"],
+        "research_areas": areas,
+        "vector": vector,
+    }
+
+    return SyncResponse(indexed_count=1, message=f"Synced faculty {f['name']} into memory.")
+
+
+@app.get("/api/recommend/faculty", response_model=RecommendResponse)
 async def recommend_faculty(
     student_id: Optional[str] = Query(None),
     skills: Optional[str] = Query(None),
@@ -137,7 +206,12 @@ async def recommend_faculty(
     """Return top-K faculty ranked by cosine similarity to student profile."""
 
     if not FACULTY_VECTORS:
-        raise HTTPException(400, "No faculty indexed yet. Call POST /index/sync-all first.")
+        # Lazy sync if empty
+        logger.info("FACULTY_VECTORS empty, attempting lazy sync...")
+        await sync_all_faculty()
+
+    if not FACULTY_VECTORS:
+        raise HTTPException(400, "No faculty indexed yet. Please register faculty profiles first.")
 
     # Build query text
     if student_id:

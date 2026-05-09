@@ -213,118 +213,120 @@ export const ProjectDetailsModal = ({ projectId, isOpen, onClose }: ProjectDetai
                 </div>
               </div>
 
-              {/* AI Feedback Section */}
-              <div className="border-t border-slate-100 pt-6">
-                {!aiFeedback && !isLoadingAi && (
-                  <button
-                    onClick={handleGetAiFeedback}
-                    className="w-full inline-flex items-center justify-center gap-2 px-4 py-3 text-sm font-medium text-white bg-gradient-to-r from-violet-600 to-purple-600 rounded-xl hover:from-violet-700 hover:to-purple-700 transition-all shadow-sm"
-                  >
-                    <Sparkles className="w-4 h-4" />
-                    Get AI Feedback
-                  </button>
-                )}
+              {/* AI Feedback Section - Students only */}
+              {user?.role === 'student' && (
+                <div className="border-t border-slate-100 pt-6">
+                  {!aiFeedback && !isLoadingAi && (
+                    <button
+                      onClick={handleGetAiFeedback}
+                      className="w-full inline-flex items-center justify-center gap-2 px-4 py-3 text-sm font-medium text-white bg-gradient-to-r from-violet-600 to-purple-600 rounded-xl hover:from-violet-700 hover:to-purple-700 transition-all shadow-sm"
+                    >
+                      <Sparkles className="w-4 h-4" />
+                      Get AI Feedback
+                    </button>
+                  )}
 
-                {isLoadingAi && (
-                  <div className="flex flex-col items-center justify-center py-8 gap-3">
-                    <div className="w-12 h-12 rounded-full bg-violet-100 flex items-center justify-center">
-                      <Loader2 className="w-6 h-6 text-violet-600 animate-spin" />
+                  {isLoadingAi && (
+                    <div className="flex flex-col items-center justify-center py-8 gap-3">
+                      <div className="w-12 h-12 rounded-full bg-violet-100 flex items-center justify-center">
+                        <Loader2 className="w-6 h-6 text-violet-600 animate-spin" />
+                      </div>
+                      <p className="text-sm text-slate-500 font-medium">Analyzing project with AI...</p>
                     </div>
-                    <p className="text-sm text-slate-500 font-medium">Analyzing project with AI...</p>
-                  </div>
-                )}
+                  )}
 
-                {aiError && (
-                  <div className="bg-red-50 text-red-600 p-4 rounded-xl text-sm font-medium border border-red-200">
-                    {aiError}
-                  </div>
-                )}
-
-                {aiFeedback && (
-                  <div className="space-y-4">
-                    <h5 className="text-sm font-semibold text-slate-900 uppercase tracking-wider flex items-center gap-1.5">
-                      <Sparkles className="w-4 h-4 text-violet-500" />
-                      AI Feedback
-                    </h5>
-
-                    {/* Relevance Score */}
-                    <div className={`p-4 rounded-xl border flex items-center gap-4 ${getScoreBg(aiFeedback.relevance_score)}`}>
-                      <div className="w-12 h-12 rounded-full bg-white flex items-center justify-center shadow-sm shrink-0">
-                        <Gauge className="w-6 h-6 text-violet-600" />
-                      </div>
-                      <div>
-                        <p className="text-xs font-medium text-slate-500 uppercase tracking-wider">Relevance Score</p>
-                        <p className={`text-3xl font-bold ${getScoreColor(aiFeedback.relevance_score)}`}>
-                          {aiFeedback.relevance_score}<span className="text-lg text-slate-400">/10</span>
-                        </p>
-                      </div>
+                  {aiError && (
+                    <div className="bg-red-50 text-red-600 p-4 rounded-xl text-sm font-medium border border-red-200">
+                      {aiError}
                     </div>
+                  )}
 
-                    {/* Summary */}
-                    <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
-                      <div className="flex items-center gap-1.5 mb-2">
-                        <FileText className="w-4 h-4 text-slate-500" />
-                        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Summary</p>
+                  {aiFeedback && (
+                    <div className="space-y-4">
+                      <h5 className="text-sm font-semibold text-slate-900 uppercase tracking-wider flex items-center gap-1.5">
+                        <Sparkles className="w-4 h-4 text-violet-500" />
+                        AI Feedback
+                      </h5>
+
+                      {/* Relevance Score */}
+                      <div className={`p-4 rounded-xl border flex items-center gap-4 ${getScoreBg(aiFeedback.relevance_score)}`}>
+                        <div className="w-12 h-12 rounded-full bg-white flex items-center justify-center shadow-sm shrink-0">
+                          <Gauge className="w-6 h-6 text-violet-600" />
+                        </div>
+                        <div>
+                          <p className="text-xs font-medium text-slate-500 uppercase tracking-wider">Relevance Score</p>
+                          <p className={`text-3xl font-bold ${getScoreColor(aiFeedback.relevance_score)}`}>
+                            {aiFeedback.relevance_score}<span className="text-lg text-slate-400">/10</span>
+                          </p>
+                        </div>
                       </div>
-                      <p className="text-sm text-slate-700">{aiFeedback.summary}</p>
+
+                      {/* Summary */}
+                      <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
+                        <div className="flex items-center gap-1.5 mb-2">
+                          <FileText className="w-4 h-4 text-slate-500" />
+                          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Summary</p>
+                        </div>
+                        <p className="text-sm text-slate-700">{aiFeedback.summary}</p>
+                      </div>
+
+                      {/* Strengths */}
+                      {aiFeedback.strengths?.length > 0 && (
+                        <div className="bg-emerald-50 p-4 rounded-xl border border-emerald-200">
+                          <div className="flex items-center gap-1.5 mb-2">
+                            <ThumbsUp className="w-4 h-4 text-emerald-600" />
+                            <p className="text-xs font-semibold text-emerald-700 uppercase tracking-wider">Strengths</p>
+                          </div>
+                          <ul className="space-y-1.5">
+                            {aiFeedback.strengths.map((s, i) => (
+                              <li key={i} className="text-sm text-emerald-800 flex items-start gap-2">
+                                <span className="mt-1.5 w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />
+                                {s}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+
+                      {/* Gaps */}
+                      {aiFeedback.gaps?.length > 0 && (
+                        <div className="bg-amber-50 p-4 rounded-xl border border-amber-200">
+                          <div className="flex items-center gap-1.5 mb-2">
+                            <AlertTriangle className="w-4 h-4 text-amber-600" />
+                            <p className="text-xs font-semibold text-amber-700 uppercase tracking-wider">Gaps</p>
+                          </div>
+                          <ul className="space-y-1.5">
+                            {aiFeedback.gaps.map((g, i) => (
+                              <li key={i} className="text-sm text-amber-800 flex items-start gap-2">
+                                <span className="mt-1.5 w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" />
+                                {g}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+
+                      {/* Suggestions */}
+                      {aiFeedback.suggestions?.length > 0 && (
+                        <div className="bg-blue-50 p-4 rounded-xl border border-blue-200">
+                          <div className="flex items-center gap-1.5 mb-2">
+                            <Lightbulb className="w-4 h-4 text-blue-600" />
+                            <p className="text-xs font-semibold text-blue-700 uppercase tracking-wider">Suggestions</p>
+                          </div>
+                          <ul className="space-y-1.5">
+                            {aiFeedback.suggestions.map((s, i) => (
+                              <li key={i} className="text-sm text-blue-800 flex items-start gap-2">
+                                <span className="mt-1.5 w-1.5 h-1.5 rounded-full bg-blue-400 shrink-0" />
+                                {s}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
                     </div>
-
-                    {/* Strengths */}
-                    {aiFeedback.strengths?.length > 0 && (
-                      <div className="bg-emerald-50 p-4 rounded-xl border border-emerald-200">
-                        <div className="flex items-center gap-1.5 mb-2">
-                          <ThumbsUp className="w-4 h-4 text-emerald-600" />
-                          <p className="text-xs font-semibold text-emerald-700 uppercase tracking-wider">Strengths</p>
-                        </div>
-                        <ul className="space-y-1.5">
-                          {aiFeedback.strengths.map((s, i) => (
-                            <li key={i} className="text-sm text-emerald-800 flex items-start gap-2">
-                              <span className="mt-1.5 w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />
-                              {s}
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-
-                    {/* Gaps */}
-                    {aiFeedback.gaps?.length > 0 && (
-                      <div className="bg-amber-50 p-4 rounded-xl border border-amber-200">
-                        <div className="flex items-center gap-1.5 mb-2">
-                          <AlertTriangle className="w-4 h-4 text-amber-600" />
-                          <p className="text-xs font-semibold text-amber-700 uppercase tracking-wider">Gaps</p>
-                        </div>
-                        <ul className="space-y-1.5">
-                          {aiFeedback.gaps.map((g, i) => (
-                            <li key={i} className="text-sm text-amber-800 flex items-start gap-2">
-                              <span className="mt-1.5 w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" />
-                              {g}
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-
-                    {/* Suggestions */}
-                    {aiFeedback.suggestions?.length > 0 && (
-                      <div className="bg-blue-50 p-4 rounded-xl border border-blue-200">
-                        <div className="flex items-center gap-1.5 mb-2">
-                          <Lightbulb className="w-4 h-4 text-blue-600" />
-                          <p className="text-xs font-semibold text-blue-700 uppercase tracking-wider">Suggestions</p>
-                        </div>
-                        <ul className="space-y-1.5">
-                          {aiFeedback.suggestions.map((s, i) => (
-                            <li key={i} className="text-sm text-blue-800 flex items-start gap-2">
-                              <span className="mt-1.5 w-1.5 h-1.5 rounded-full bg-blue-400 shrink-0" />
-                              {s}
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
+                  )}
+                </div>
+              )}
 
               <div className="border-t border-slate-100 pt-6 space-y-3">
                 <h5 className="text-sm font-semibold text-slate-900 uppercase tracking-wider">Milestones</h5>

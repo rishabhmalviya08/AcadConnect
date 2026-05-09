@@ -108,6 +108,22 @@ router.put('/me', async (req, res, next) => {
     });
 
     res.status(200).json({ message: 'Profile updated successfully' });
+
+    // ─── Post-update Sync with Recommendation Service ──────────
+    if (role === 'faculty' && research_areas !== undefined) {
+      const RECOMMEND_URL = process.env.RECOMMENDATION_SERVICE_URL || 'http://localhost:8002';
+      // Fire and forget (don't block the profile update response)
+      fetch(`${RECOMMEND_URL}/api/index/sync-one/${userId}`, { method: 'POST' })
+        .then(async (r) => {
+          if (!r.ok) {
+            const txt = await r.text();
+            console.error(`[user-service] Recommendation sync failed: ${r.status} ${txt}`);
+          } else {
+            console.log(`[user-service] Synced faculty ${userId} with recommendation-service`);
+          }
+        })
+        .catch((err) => console.error('[user-service] Recommendation sync error:', err.message));
+    }
   } catch (err) {
     next(err);
   }
@@ -156,7 +172,7 @@ router.put('/notifications/:id/read', async (req, res, next) => {
       .update({ is_read: true });
 
     if (!updated) throw createError(404, 'Notification not found');
-    pushToUser(db, req.user.id).catch(() => {});
+    pushToUser(db, req.user.id).catch(() => { });
     res.status(200).json({ message: 'Notification marked as read' });
   } catch (err) {
     next(err);

@@ -49,7 +49,7 @@ export const Dashboard = () => {
           setGroupsCount(0);
         }
 
-        const projectsRes = await projectApi.get('/projects');
+        const projectsRes = await projectApi.get('/projects/me');
         setProjectsCount(projectsRes.data.projects?.length || 0);
 
         await fetchNotifications();
