@@ -47,9 +47,9 @@ describe('POST /api/groups', () => {
   });
 
   // Test 54
-  it('student creates a group with 4 invited members (5 total) → 201', async () => {
+  it('student creates a group with 3 invited members (4 total) → 201', async () => {
     const leader = await createStudent();
-    const members = await makeStudents(4);
+    const members = await makeStudents(3);
 
     const res = await request(projectApp)
       .post('/api/groups')
@@ -63,7 +63,7 @@ describe('POST /api/groups', () => {
   });
 
   // Test 55
-  it('returns 400 when only 1 invited member (2 total — too few)', async () => {
+  it('student creates a group with 1 invited member (2 total) → 201', async () => {
     const leader = await createStudent();
     const [m1] = await makeStudents(1);
 
@@ -72,13 +72,33 @@ describe('POST /api/groups', () => {
       .set(authHeader(leader.token))
       .send({ name: 'Tiny Team', member_emails: [m1.user.email] });
 
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(201);
+    expect(res.body.group_id).toBeDefined();
+  });
+
+  it('student creates a group with no invites (leader only) → 201', async () => {
+    const leader = await createStudent();
+
+    const res = await request(projectApp)
+      .post('/api/groups')
+      .set(authHeader(leader.token))
+      .send({ name: 'Solo Squad' });
+
+    expect(res.status).toBe(201);
+    expect(res.body.group_id).toBeDefined();
+
+    const meRes = await request(projectApp).get('/api/groups/me').set(authHeader(leader.token));
+    const g = meRes.body.groups.find((x) => x.group_id === res.body.group_id);
+    expect(g).toBeDefined();
+    expect(g.members).toHaveLength(1);
+    expect(g.members[0].email).toBe(leader.user.email);
+    expect(g.members[0].status).toBe('accepted');
   });
 
   // Test 56
-  it('returns 400 when 5 invited members (6 total — too many)', async () => {
+  it('returns 400 when 4 invited members (5 total — too many)', async () => {
     const leader = await createStudent();
-    const members = await makeStudents(5);
+    const members = await makeStudents(4);
 
     const res = await request(projectApp)
       .post('/api/groups')
@@ -168,12 +188,21 @@ describe('POST /api/groups', () => {
   });
 
   // Test 61
-  it('returns 400 when name or member_emails is missing', async () => {
+  it('returns 400 when name is missing', async () => {
     const leader = await createStudent();
     const res = await request(projectApp)
       .post('/api/groups')
       .set(authHeader(leader.token))
-      .send({ name: 'No Emails' }); // missing member_emails
+      .send({ member_emails: [] });
+    expect(res.status).toBe(400);
+  });
+
+  it('returns 400 when member_emails is not an array', async () => {
+    const leader = await createStudent();
+    const res = await request(projectApp)
+      .post('/api/groups')
+      .set(authHeader(leader.token))
+      .send({ name: 'Bad Emails', member_emails: 'not-an-array' });
     expect(res.status).toBe(400);
   });
 

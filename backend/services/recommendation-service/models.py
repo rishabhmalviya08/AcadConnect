@@ -29,3 +29,15 @@ class SyncResponse(BaseModel):
     """Response from the sync-all endpoint."""
     indexed_count: int
     message: str
+
+
+class FacultyListItem(BaseModel):
+    """One faculty row for directory listing."""
+    faculty_id: str
+    name: str
+    research_areas: List[str]
+
+
+class FacultyListResponse(BaseModel):
+    """All faculty from Postgres (for UI directory)."""
+    faculty: List[FacultyListItem]

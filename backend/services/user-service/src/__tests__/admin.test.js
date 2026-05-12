@@ -68,6 +68,58 @@ describe('GET /api/admin/users', () => {
       .set(authHeader(adminToken));
     expect(res.status).toBe(400);
   });
+
+  it('returns 400 for invalid eligibility_status filter', async () => {
+    const { token: adminToken } = await createAdmin();
+    const res = await request(app)
+      .get('/api/admin/users?eligibility_status=unknown')
+      .set(authHeader(adminToken));
+    expect(res.status).toBe(400);
+  });
+
+  it('filters by eligibility_status=probation (students on probation; staff still listed)', async () => {
+    const { token: adminToken } = await createAdmin();
+    const { user: s1 } = await createStudent({ email: 's_ok@test.com' });
+    const { user: s2 } = await createStudent({ email: 's_prob@test.com' });
+    await createFaculty({ email: 'f1@test.com' });
+
+    await request(app)
+      .put(`/api/admin/users/${s2.id}/eligibility`)
+      .set(authHeader(adminToken))
+      .send({ eligibility_status: 'probation' });
+
+    const res = await request(app)
+      .get('/api/admin/users?eligibility_status=probation')
+      .set(authHeader(adminToken));
+    expect(res.status).toBe(200);
+    const ids = res.body.users.map((u) => u.id);
+    expect(ids).toContain(s2.id);
+    expect(ids).not.toContain(s1.id);
+    expect(res.body.users.some((u) => u.role === 'faculty')).toBe(true);
+    expect(res.body.users.some((u) => u.role === 'admin')).toBe(true);
+  });
+
+  it('sorts by role ascending', async () => {
+    const { token: adminToken } = await createAdmin();
+    await createStudent({ email: 's_sort@test.com' });
+    await createFaculty({ email: 'f_sort@test.com' });
+
+    const res = await request(app)
+      .get('/api/admin/users?sort_by=role&sort_dir=asc')
+      .set(authHeader(adminToken));
+    expect(res.status).toBe(200);
+    const roles = res.body.users.map((u) => u.role);
+    const sorted = [...roles].sort();
+    expect(roles).toEqual(sorted);
+  });
+
+  it('returns 400 for invalid sort_by', async () => {
+    const { token: adminToken } = await createAdmin();
+    const res = await request(app)
+      .get('/api/admin/users?sort_by=name')
+      .set(authHeader(adminToken));
+    expect(res.status).toBe(400);
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────

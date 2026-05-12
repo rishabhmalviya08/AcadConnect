@@ -1,7 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
 import { projectApi } from '../services/api';
-import { Plus, Loader2, Users, Crown, CheckCircle, Clock, Mail } from 'lucide-react';
+import { useAuthStore } from '../store/authStore';
+import { Plus, Loader2, Users, Crown, CheckCircle, Clock, Mail, UserPlus } from 'lucide-react';
 import { CreateGroupModal } from '../components/CreateGroupModal';
+import { MAX_GROUP_MEMBERS } from '../constants/groupLimits';
 
 interface Member {
   name: string;
@@ -12,6 +14,7 @@ interface Member {
 interface Group {
   group_id: string;
   name: string;
+  leader_id: string;
   leader_name: string;
   my_status: string;
   created_at: string;
@@ -19,12 +22,15 @@ interface Group {
 }
 
 export const Groups = () => {
+  const { user } = useAuthStore();
   const [groups, setGroups] = useState<Group[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [acceptingGroupId, setAcceptingGroupId] = useState<string | null>(null);
+  const [inviteEmails, setInviteEmails] = useState<Record<string, string>>({});
+  const [invitingGroupId, setInvitingGroupId] = useState<string | null>(null);
 
   const fetchGroups = useCallback(async () => {
     setIsLoading(true);
@@ -43,6 +49,28 @@ export const Groups = () => {
   useEffect(() => {
     fetchGroups();
   }, [fetchGroups]);
+
+  const handleInviteMember = async (groupId: string) => {
+    const email = (inviteEmails[groupId] || '').trim();
+    if (!email) {
+      setError('Enter a student email to invite.');
+      return;
+    }
+    setInvitingGroupId(groupId);
+    setError('');
+    setSuccessMsg('');
+    try {
+      await projectApi.post(`/groups/${groupId}/invite`, { member_email: email });
+      setSuccessMsg('Invitation sent.');
+      setInviteEmails((prev) => ({ ...prev, [groupId]: '' }));
+      fetchGroups();
+      setTimeout(() => setSuccessMsg(''), 4000);
+    } catch (err: any) {
+      setError(err.response?.data?.error || 'Failed to send invite');
+    } finally {
+      setInvitingGroupId(null);
+    }
+  };
 
   const handleAcceptInvite = async (groupId: string, groupName: string) => {
     setAcceptingGroupId(groupId);
@@ -168,6 +196,39 @@ export const Groups = () => {
                       <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">
                         Members ({group.members.length})
                       </p>
+                      {user?.id === group.leader_id && group.members.length < MAX_GROUP_MEMBERS && (
+                        <div className="mb-4 p-3 rounded-xl bg-primary-50 border border-primary-100">
+                          <p className="text-xs font-semibold text-primary-800 uppercase tracking-wider mb-2 flex items-center gap-1">
+                            <UserPlus className="w-3.5 h-3.5" />
+                            Invite a teammate (max {MAX_GROUP_MEMBERS} in group)
+                          </p>
+                          <div className="flex flex-col sm:flex-row gap-2">
+                            <input
+                              type="email"
+                              placeholder="student@university.edu"
+                              value={inviteEmails[group.group_id] || ''}
+                              onChange={(e) =>
+                                setInviteEmails((prev) => ({ ...prev, [group.group_id]: e.target.value }))
+                              }
+                              className="flex-1 text-sm px-3 py-2 border border-primary-200 rounded-lg focus:ring-2 focus:ring-primary-500"
+                            />
+                            <button
+                              type="button"
+                              disabled={invitingGroupId === group.group_id}
+                              onClick={() => handleInviteMember(group.group_id)}
+                              className="inline-flex items-center justify-center gap-1 px-3 py-2 text-sm font-medium text-white bg-primary-600 rounded-lg hover:bg-primary-700 disabled:opacity-50 shrink-0"
+                            >
+                              {invitingGroupId === group.group_id ? (
+                                <Loader2 className="w-4 h-4 animate-spin" />
+                              ) : (
+                                <UserPlus className="w-4 h-4" />
+                              )}
+                              Invite
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
                       <div className="space-y-2.5">
                         {group.members.map((member) => (
                           <div key={member.email} className="flex items-center justify-between p-2.5 rounded-xl bg-slate-50 border border-slate-100">

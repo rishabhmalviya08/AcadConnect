@@ -33,7 +33,7 @@ end
 # Unset irrelevant variables.
 deactivate nondestructive
 
-set -gx VIRTUAL_ENV /Users/rishabhmalviya/Desktop/AcadConnect/backend/services/ai-feedback-service/.venv
+set -gx VIRTUAL_ENV /Users/ankitanand/Acad-Rishabh/AcadConnect/backend/services/ai-feedback-service/.venv
 
 set -gx _OLD_VIRTUAL_PATH $PATH
 set -gx PATH "$VIRTUAL_ENV/"bin $PATH

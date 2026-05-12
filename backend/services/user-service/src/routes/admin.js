@@ -20,24 +20,72 @@ const writeAuditLog = async (trx, { admin_id, target_user_id, action, details })
   });
 };
 
+const ELIGIBILITY_STATUSES = ['eligible', 'probation', 'ineligible'];
+
 /**
  * GET /api/admin/users
  * Returns all users with their role-specific profile summary.
- * Supports optional query filters: ?role=student|faculty|admin
+ * Query: ?role=student|faculty|admin
+ *         ?eligibility_status=eligible|probation|ineligible (students matching; non-students still included)
+ *         ?sort_by=created_at|role&sort_dir=asc|desc (default created_at desc)
  *
- * Response 200: { users: [...] }
+ * Response 200: { users: [...] } — each row includes eligibility_status (null for non-students)
  */
 router.get('/users', async (req, res, next) => {
   try {
-    const { role } = req.query;
-    const query = db('users').select('id', 'name', 'email', 'role', 'created_at');
+    const { role, eligibility_status, sort_by, sort_dir } = req.query;
+    const sortBy = sort_by === 'role' ? 'role' : 'created_at';
+    const sortDir = String(sort_dir || 'desc').toLowerCase() === 'asc' ? 'asc' : 'desc';
+
+    if (sort_by && sort_by !== 'created_at' && sort_by !== 'role') {
+      throw createError(400, "sort_by must be 'created_at' or 'role'");
+    }
+    if (sort_dir && !['asc', 'desc'].includes(String(sort_dir).toLowerCase())) {
+      throw createError(400, "sort_dir must be 'asc' or 'desc'");
+    }
+
+    const query = db('users as u')
+      .leftJoin('student_profiles as sp', 'u.id', 'sp.user_id')
+      .select(
+        'u.id',
+        'u.name',
+        'u.email',
+        'u.role',
+        'u.created_at',
+        db.raw(
+          `CASE WHEN u.role = 'student' THEN COALESCE(sp.eligibility_status::text, 'eligible') ELSE NULL END as eligibility_status`
+        )
+      );
+
     if (role) {
       if (!['student', 'faculty', 'admin'].includes(role)) {
         throw createError(400, "role filter must be 'student', 'faculty', or 'admin'");
       }
-      query.where({ role });
+      query.where('u.role', role);
     }
-    const users = await query.orderBy('created_at', 'desc');
+
+    if (eligibility_status) {
+      if (!ELIGIBILITY_STATUSES.includes(eligibility_status)) {
+        throw createError(
+          400,
+          `eligibility_status must be one of: ${ELIGIBILITY_STATUSES.join(', ')}`
+        );
+      }
+      query.where(function filterByEligibility() {
+        this.where('u.role', '!=', 'student').orWhereRaw(
+          "COALESCE(sp.eligibility_status::text, 'eligible') = ?",
+          [eligibility_status]
+        );
+      });
+    }
+
+    if (sortBy === 'role') {
+      query.orderBy('u.role', sortDir).orderBy('u.created_at', 'desc');
+    } else {
+      query.orderBy('u.created_at', sortDir);
+    }
+
+    const users = await query;
     res.status(200).json({ users });
   } catch (err) {
     next(err);
@@ -98,9 +146,8 @@ router.put('/users/:id/eligibility', async (req, res, next) => {
     const targetId = req.params.id;
     const adminId = req.user.id;
 
-    const VALID_STATUSES = ['eligible', 'probation', 'ineligible'];
-    if (!eligibility_status || !VALID_STATUSES.includes(eligibility_status)) {
-      throw createError(400, `eligibility_status must be one of: ${VALID_STATUSES.join(', ')}`);
+    if (!eligibility_status || !ELIGIBILITY_STATUSES.includes(eligibility_status)) {
+      throw createError(400, `eligibility_status must be one of: ${ELIGIBILITY_STATUSES.join(', ')}`);
     }
 
     // Ensure target is a student

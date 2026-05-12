@@ -35,7 +35,7 @@ deactivate () {
 # unset irrelevant variables
 deactivate nondestructive
 
-VIRTUAL_ENV=/Users/rishabhmalviya/Desktop/AcadConnect/backend/services/recommendation-service/.venv
+VIRTUAL_ENV=/Users/ankitanand/Acad-Rishabh/AcadConnect/backend/services/recommendation-service/.venv
 export VIRTUAL_ENV
 
 _OLD_VIRTUAL_PATH="$PATH"

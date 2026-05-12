@@ -3,6 +3,8 @@ const { v4: uuidv4 } = require('uuid');
 const db = require('../db/knex');
 const { authenticate, authorize } = require('../middleware/auth');
 const { createError } = require('../utils/errors');
+const { getProjectStakeholderStudentIds } = require('../utils/projectStakeholders');
+const { MAX_GROUP_MEMBERS } = require('../constants/groupLimits');
 
 const router = express.Router();
 
@@ -17,17 +19,10 @@ const notifyUser = async (trx, { userId, type, title, message, metadata = {} }) 
   });
 };
 
-const getAcceptedGroupMemberIds = async (trx, groupId) => {
-  const members = await trx('group_members')
-    .select('student_id')
-    .where({ group_id: groupId, status: 'accepted' });
-  return members.map((m) => m.student_id);
-};
-
 /**
  * POST /api/requests
  * Submit a mentorship request to a specific faculty member.
- * Student only. Must be leader of the group that owns the project.
+ * Student only. Only the project owner (creator) may submit a mentorship request.
  *
  * Body: { project_id, faculty_id?, faculty_name?, snippet? }
  */
@@ -62,41 +57,50 @@ router.post('/', authenticate, authorize('student'), async (req, res, next) => {
       resolvedFacultyId = matches[0].id;
     }
 
-    // 1. Verify Project belongs to the student's group
     const project = await db('projects').where({ id: project_id }).first();
     if (!project) throw createError(404, 'Project not found');
-
-    const group = await db('groups').where({ id: project.group_id }).first();
-    if (!group || group.leader_id !== req.user.id) {
-      throw createError(403, 'Only the group leader of this project can submit a request');
+    if (project.status !== 'open') {
+      throw createError(400, 'Mentorship requests can only be submitted for open projects');
     }
 
-    // 2. Count *accepted* members in group
-    const { count: memberCount } = await db('group_members')
-      .where({ group_id: group.id, status: 'accepted' })
-      .count('student_id as count')
-      .first();
-
-    const acceptedCount = Number(memberCount);
-    if (acceptedCount < 3 || acceptedCount > 5) {
-      throw createError(400, `Your group must have between 3 and 5 **accepted** members to apply. Currently has ${acceptedCount}.`);
+    if (project.creator_student_id !== req.user.id) {
+      throw createError(403, 'Only the project owner can submit a mentorship request for this project');
     }
 
-    // 3. Ensure group has NOT already secured a mentor
+    if (project.group_id) {
+      const group = await db('groups').where({ id: project.group_id }).first();
+      if (!group) {
+        throw createError(400, 'Project references a missing group; update the linked group first');
+      }
+
+      const { count: memberCount } = await db('group_members')
+        .where({ group_id: group.id, status: 'accepted' })
+        .count('student_id as count')
+        .first();
+
+      const acceptedCount = Number(memberCount);
+      if (acceptedCount > MAX_GROUP_MEMBERS) {
+        throw createError(
+          400,
+          `Your linked group cannot have more than ${MAX_GROUP_MEMBERS} accepted members before requesting a mentor. Currently has ${acceptedCount}.`
+        );
+      }
+    }
+
     const acceptedMentors = await db('project_requests')
       .where({ project_id })
       .andWhere({ status: 'accepted' })
       .first();
 
     if (acceptedMentors) {
-      throw createError(400, 'Your group already has an accepted mentor.');
+      throw createError(400, 'This project already has an accepted mentor.');
     }
 
     // 4. Ensure no duplicate pending request to the same faculty
     const existing = await db('project_requests')
       .where({ project_id, faculty_id: resolvedFacultyId })
       .first();
-    if (existing) throw createError(409, 'Your group has already submitted a request to this faculty');
+    if (existing) throw createError(409, 'A request to this faculty for this project already exists');
 
     // 5. Insert Request and notify faculty
     const requestId = uuidv4();
@@ -113,7 +117,7 @@ router.post('/', authenticate, authorize('student'), async (req, res, next) => {
         userId: resolvedFacultyId,
         type: 'request_submitted',
         title: 'New mentorship request',
-        message: `A student group submitted a mentorship request for project "${project.title}".`,
+        message: `A mentorship request was submitted for project "${project.title}".`,
         metadata: { project_id, request_id: requestId },
       });
     });
@@ -136,8 +140,9 @@ router.get('/faculty', authenticate, authorize('faculty'), async (req, res, next
     // 1. Fetch the requests
     const requests = await db('project_requests as pr')
       .join('projects as p', 'pr.project_id', 'p.id')
-      .join('groups as g', 'p.group_id', 'g.id')
-      .join('users as leader', 'g.leader_id', 'leader.id')
+      .leftJoin('groups as g', 'p.group_id', 'g.id')
+      .leftJoin('users as leader', 'g.leader_id', 'leader.id')
+      .leftJoin('users as creator', 'p.creator_student_id', 'creator.id')
       .select(
         'pr.id as request_id',
         'pr.status as request_status',
@@ -147,20 +152,29 @@ router.get('/faculty', authenticate, authorize('faculty'), async (req, res, next
         'p.title as project_title',
         'p.description as project_description',
         'g.id as group_id',
-        'g.name as group_name',
-        'leader.name as leader_name'
+        db.raw("COALESCE(g.name, 'Individual project') as group_name"),
+        db.raw('COALESCE(leader.name, creator.name) as leader_name'),
+        'p.creator_student_id'
       )
       .where('pr.faculty_id', req.user.id)
       .orderBy('pr.created_at', 'desc');
 
-    // 2. Attach members to each request
     for (const reqObj of requests) {
-      const members = await db('group_members as gm')
-        .join('users as u', 'gm.student_id', 'u.id')
-        .select('u.name', 'u.email')
-        .where('gm.group_id', reqObj.group_id)
-        .andWhere('gm.status', 'accepted');
-      reqObj.members = members;
+      if (reqObj.group_id) {
+        const members = await db('group_members as gm')
+          .join('users as u', 'gm.student_id', 'u.id')
+          .select('u.name', 'u.email')
+          .where('gm.group_id', reqObj.group_id)
+          .andWhere('gm.status', 'accepted');
+        reqObj.members = members;
+      } else {
+        const creator = await db('users')
+          .select('name', 'email')
+          .where({ id: reqObj.creator_student_id })
+          .first();
+        reqObj.members = creator ? [creator] : [];
+      }
+      delete reqObj.creator_student_id;
     }
 
     res.status(200).json({ requests });
@@ -193,8 +207,7 @@ router.put('/:id/status', authenticate, authorize('faculty'), async (req, res, n
       if (pr.status !== 'pending') throw createError(400, `Request is already ${pr.status}`);
 
       const project = await trx('projects as p')
-        .join('groups as g', 'p.group_id', 'g.id')
-        .select('p.id', 'p.title', 'g.id as group_id')
+        .select('p.id', 'p.title', 'p.group_id', 'p.creator_student_id')
         .where('p.id', pr.project_id)
         .first();
 
@@ -221,7 +234,7 @@ router.put('/:id/status', authenticate, authorize('faculty'), async (req, res, n
           .first();
 
         if (groupBooking) {
-          throw createError(400, "This group has already accepted a different mentor's request.");
+          throw createError(400, "This project has already accepted a different mentor's request.");
         }
 
         // 2. Mark this request accepted
@@ -243,8 +256,8 @@ router.put('/:id/status', authenticate, authorize('faculty'), async (req, res, n
             .update({ status: 'rejected', updated_at: trx.fn.now() });
         }
 
-        const groupMemberIds = await getAcceptedGroupMemberIds(trx, project.group_id);
-        for (const memberId of groupMemberIds) {
+        const stakeholderIds = await getProjectStakeholderStudentIds(trx, project);
+        for (const memberId of stakeholderIds) {
           await notifyUser(trx, {
             userId: memberId,
             type: 'request_accepted',
@@ -257,8 +270,8 @@ router.put('/:id/status', authenticate, authorize('faculty'), async (req, res, n
         // Just rejecting
         await trx('project_requests').where({ id: reqId }).update({ status: 'rejected', updated_at: trx.fn.now() });
 
-        const groupMemberIds = await getAcceptedGroupMemberIds(trx, project.group_id);
-        for (const memberId of groupMemberIds) {
+        const stakeholderIds = await getProjectStakeholderStudentIds(trx, project);
+        for (const memberId of stakeholderIds) {
           await notifyUser(trx, {
             userId: memberId,
             type: 'request_rejected',

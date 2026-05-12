@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { authApi } from '../services/api';
+import { useAuthStore } from '../store/authStore';
 import { Loader2 } from 'lucide-react';
 
 export const Register = () => {
@@ -11,6 +12,7 @@ export const Register = () => {
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate();
+  const login = useAuthStore((state) => state.login);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -18,9 +20,15 @@ export const Register = () => {
     setIsLoading(true);
 
     try {
-      await authApi.post('/auth/register', { name, email, password, role });
-      // Redirect to login after successful registration
-      navigate('/login');
+      const response = await authApi.post('/auth/register', {
+        name,
+        email: email.trim().toLowerCase(),
+        password,
+        role,
+      });
+      const { user, token } = response.data;
+      login(user, token);
+      navigate('/dashboard');
     } catch (err: any) {
       console.error('Registration error:', err);
       setError(err.response?.data?.error || 'Registration failed');

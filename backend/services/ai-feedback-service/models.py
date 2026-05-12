@@ -13,6 +13,7 @@ class FeedbackRequest(BaseModel):
     snippet: str
     project_title: str
     project_description: str
+    project_abstract: Optional[str] = None
 
 
 class FeedbackResponse(BaseModel):
@@ -35,6 +36,7 @@ class FeedbackCreatedResponse(BaseModel):
 class FeedbackSyncRequest(BaseModel):
     project_title: str
     project_description: str
+    project_abstract: Optional[str] = None
 
 class FeedbackSyncResponse(BaseModel):
     relevance_score: int

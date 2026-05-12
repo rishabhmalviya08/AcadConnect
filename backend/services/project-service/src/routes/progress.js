@@ -3,6 +3,10 @@ const { v4: uuidv4 } = require('uuid');
 const db = require('../db/knex');
 const { authenticate, authorize } = require('../middleware/auth');
 const { createError } = require('../utils/errors');
+const {
+  getProjectStakeholderStudentIds,
+  isStudentProjectParticipant,
+} = require('../utils/projectStakeholders');
 
 const router = express.Router();
 
@@ -19,17 +23,10 @@ const notifyUser = async (trx, { userId, type, title, message, metadata = {} }) 
 
 const getProjectWithGroup = async (projectId) =>
   db('projects as p')
-    .join('groups as g', 'p.group_id', 'g.id')
-    .select('p.id', 'p.title', 'p.group_id', 'g.leader_id')
+    .leftJoin('groups as g', 'p.group_id', 'g.id')
+    .select('p.id', 'p.title', 'p.group_id', 'p.creator_student_id', 'g.leader_id')
     .where('p.id', projectId)
     .first();
-
-const getAcceptedGroupMemberIds = async (trx, groupId) => {
-  const members = await trx('group_members')
-    .select('student_id')
-    .where({ group_id: groupId, status: 'accepted' });
-  return members.map((m) => m.student_id);
-};
 
 router.get('/projects/:id/progress', authenticate, async (req, res, next) => {
   try {
@@ -45,10 +42,8 @@ router.get('/projects/:id/progress', authenticate, async (req, res, next) => {
         .first();
       if (!assigned) throw createError(403, 'You are not assigned to this project');
     } else if (isStudent) {
-      const membership = await db('group_members')
-        .where({ group_id: project.group_id, student_id: req.user.id, status: 'accepted' })
-        .first();
-      if (!membership) throw createError(403, 'You are not a member of this project group');
+      const allowed = await isStudentProjectParticipant(db, project, req.user.id);
+      if (!allowed) throw createError(403, 'You do not have access to this project');
     }
 
     const milestones = await db('progress')
@@ -86,8 +81,8 @@ router.post('/projects/:id/progress', authenticate, authorize('faculty'), async 
         completed: false,
       });
 
-      const groupMemberIds = await getAcceptedGroupMemberIds(trx, project.group_id);
-      for (const memberId of groupMemberIds) {
+      const stakeholderIds = await getProjectStakeholderStudentIds(trx, project);
+      for (const memberId of stakeholderIds) {
         await notifyUser(trx, {
           userId: memberId,
           type: 'milestone_created',
@@ -134,8 +129,8 @@ router.put('/projects/:id/progress/:progressId', authenticate, authorize('facult
         .where({ id: req.params.progressId, project_id: project.id })
         .update(updates);
 
-      const groupMemberIds = await getAcceptedGroupMemberIds(trx, project.group_id);
-      for (const memberId of groupMemberIds) {
+      const stakeholderIds = await getProjectStakeholderStudentIds(trx, project);
+      for (const memberId of stakeholderIds) {
         await notifyUser(trx, {
           userId: memberId,
           type: 'milestone_updated',

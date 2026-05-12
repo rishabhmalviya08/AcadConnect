@@ -1,6 +1,12 @@
 import axios from 'axios';
 import { useAuthStore } from '../store/authStore';
 
+/** Do not treat failed login/register 401 as “session expired”. */
+function isPublicAuthRequest(url: string | undefined): boolean {
+  if (!url) return false;
+  return url.includes('/auth/login') || url.includes('/auth/register');
+}
+
 const createApiClient = (baseURL: string) => {
   const api = axios.create({
     baseURL,
@@ -11,9 +17,14 @@ const createApiClient = (baseURL: string) => {
 
   api.interceptors.request.use(
     (config) => {
-      const token = useAuthStore.getState().token;
-      if (token) {
-        config.headers.Authorization = `Bearer ${token}`;
+      const url = config.url || '';
+      const isPublicAuth =
+        url.includes('/auth/login') || url.includes('/auth/register');
+      if (!isPublicAuth) {
+        const token = useAuthStore.getState().token;
+        if (token) {
+          config.headers.Authorization = `Bearer ${token}`;
+        }
       }
       return config;
     },
@@ -23,10 +34,12 @@ const createApiClient = (baseURL: string) => {
   api.interceptors.response.use(
     (response) => response,
     (error) => {
-      if (error.response && error.response.status === 401) {
+      if (
+        error.response?.status === 401 &&
+        !isPublicAuthRequest(error.config?.url)
+      ) {
         const currentPath = window.location.pathname;
 
-        // ✅ Only logout + redirect if NOT already on login page
         if (currentPath !== '/login') {
           useAuthStore.getState().logout();
           window.location.href = '/login';

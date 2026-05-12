@@ -36,22 +36,30 @@ describe('POST /api/requests', () => {
    */
   beforeEach(async () => {
     faculty = await createFaculty();
-    project = await createProject(faculty.token);
-
     leader = await createStudent();
     invitees = [await createStudent(), await createStudent()]; // 2 invitees → 3 total
     ({ groupId } = await createFullGroup(
       leader.token,
       invitees.map((i) => ({ email: i.user.email, token: i.token }))
     ));
+    const pres = await request(projectApp)
+      .post('/api/projects')
+      .set(authHeader(leader.token))
+      .send({
+        title: 'Test Project',
+        description: 'A test project description',
+        group_id: groupId,
+      });
+    if (pres.status !== 201) throw new Error(`seed project failed: ${JSON.stringify(pres.body)}`);
+    project = pres.body.project;
   });
 
   // Test 73
-  it('group leader with 3 accepted members submits a valid request → 201', async () => {
+  it('project owner with 3 accepted members submits a valid request → 201', async () => {
     const res = await request(projectApp)
       .post('/api/requests')
       .set(authHeader(leader.token))
-      .send({ project_id: project.id, group_id: groupId, snippet: VALID_SNIPPET });
+      .send({ project_id: project.id, faculty_id: faculty.user.id, snippet: VALID_SNIPPET });
 
     expect(res.status).toBe(201);
     expect(res.body.request_id).toBeDefined();
@@ -62,26 +70,25 @@ describe('POST /api/requests', () => {
     const res = await request(projectApp)
       .post('/api/requests')
       .set(authHeader(leader.token))
-      .send({ project_id: project.id, group_id: groupId, snippet: LONG_SNIPPET });
+      .send({ project_id: project.id, faculty_id: faculty.user.id, snippet: LONG_SNIPPET });
 
     expect(res.status).toBe(400);
     expect(res.body.error).toMatch(/200/);
   });
 
   // Test 75
-  it('returns 403 when requester is not the group leader', async () => {
+  it('returns 403 when requester is not the project owner', async () => {
     const nonLeader = invitees[0];
     const res = await request(projectApp)
       .post('/api/requests')
       .set(authHeader(nonLeader.token))
-      .send({ project_id: project.id, group_id: groupId, snippet: VALID_SNIPPET });
+      .send({ project_id: project.id, faculty_id: faculty.user.id, snippet: VALID_SNIPPET });
 
     expect(res.status).toBe(403);
   });
 
   // Test 76
-  it('returns 400 when group has fewer than 3 accepted members', async () => {
-    // Create a group with only leader accepted (invitees did NOT accept)
+  it('allows PUT to link a group when only the leader has accepted (invites still pending)', async () => {
     const loneLeader = await createStudent();
     const [pending1, pending2] = [await createStudent(), await createStudent()];
 
@@ -91,24 +98,28 @@ describe('POST /api/requests', () => {
       .send({ name: 'Unaccepted Group', member_emails: [pending1.user.email, pending2.user.email] });
 
     const loneGroupId = createRes.body.group_id;
-    // No one accepts the invite → only leader is 'accepted' (count = 1)
+
+    const projRes = await request(projectApp)
+      .post('/api/projects')
+      .set(authHeader(loneLeader.token))
+      .send({ title: 'Solo for link test', description: 'D' });
+    expect(projRes.status).toBe(201);
+    const pid = projRes.body.project.id;
 
     const res = await request(projectApp)
-      .post('/api/requests')
+      .put(`/api/projects/${pid}/group`)
       .set(authHeader(loneLeader.token))
-      .send({ project_id: project.id, group_id: loneGroupId, snippet: VALID_SNIPPET });
+      .send({ group_id: loneGroupId });
 
-    expect(res.status).toBe(400);
-    expect(res.body.error).toMatch(/3/);
+    expect(res.status).toBe(200);
+    expect(res.body.group_id).toBe(loneGroupId);
   });
 
   // Test 77
-  it('returns 400 when group has more than 5 accepted members (edge case)', async () => {
-    // Create group with max 4 invites (5 total) + 1 extra via direct DB insert
+  it('returns 400 when group has more than 4 accepted members (edge case)', async () => {
+    const fac = await createFaculty();
     const bigLeader = await createStudent();
-    const bigInvitees = await Promise.all([
-      createStudent(), createStudent(), createStudent(), createStudent(),
-    ]);
+    const bigInvitees = await Promise.all([createStudent(), createStudent(), createStudent()]);
     const createRes = await request(projectApp)
       .post('/api/groups')
       .set(authHeader(bigLeader.token))
@@ -117,16 +128,26 @@ describe('POST /api/requests', () => {
         member_emails: bigInvitees.map((i) => i.user.email),
       });
 
+    expect(createRes.status).toBe(201);
     const bigGroupId = createRes.body.group_id;
 
-    // All 4 accept → 5 total accepted
     for (const inv of bigInvitees) {
       await request(projectApp)
         .put(`/api/groups/${bigGroupId}/accept-invite`)
         .set(authHeader(inv.token));
     }
 
-    // Force a 6th member via DB (bypass API to test the boundary)
+    const projRes = await request(projectApp)
+      .post('/api/projects')
+      .set(authHeader(bigLeader.token))
+      .send({
+        title: 'Group project for capacity test',
+        description: 'Description',
+        group_id: bigGroupId,
+      });
+    expect(projRes.status).toBe(201);
+    const bigProjectId = projRes.body.project.id;
+
     const extra = await createStudent();
     await db('group_members').insert({
       group_id: bigGroupId,
@@ -137,9 +158,14 @@ describe('POST /api/requests', () => {
     const res = await request(projectApp)
       .post('/api/requests')
       .set(authHeader(bigLeader.token))
-      .send({ project_id: project.id, group_id: bigGroupId, snippet: VALID_SNIPPET });
+      .send({
+        project_id: bigProjectId,
+        faculty_id: fac.user.id,
+        snippet: VALID_SNIPPET,
+      });
 
     expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/4/);
   });
 
   // Test 78
@@ -149,7 +175,7 @@ describe('POST /api/requests', () => {
       .set(authHeader(leader.token))
       .send({
         project_id: '00000000-0000-0000-0000-000000000000',
-        group_id: groupId,
+        faculty_id: faculty.user.id,
         snippet: VALID_SNIPPET,
       });
     expect(res.status).toBe(404);
@@ -162,10 +188,10 @@ describe('POST /api/requests', () => {
     const res = await request(projectApp)
       .post('/api/requests')
       .set(authHeader(leader.token))
-      .send({ project_id: project.id, group_id: groupId, snippet: VALID_SNIPPET });
+      .send({ project_id: project.id, faculty_id: faculty.user.id, snippet: VALID_SNIPPET });
 
     expect(res.status).toBe(400);
-    expect(res.body.error).toMatch(/closed/i);
+    expect(res.body.error).toMatch(/open/i);
   });
 
   // Test 80
@@ -173,12 +199,12 @@ describe('POST /api/requests', () => {
     await request(projectApp)
       .post('/api/requests')
       .set(authHeader(leader.token))
-      .send({ project_id: project.id, group_id: groupId, snippet: VALID_SNIPPET });
+      .send({ project_id: project.id, faculty_id: faculty.user.id, snippet: VALID_SNIPPET });
 
     const res = await request(projectApp)
       .post('/api/requests')
       .set(authHeader(leader.token))
-      .send({ project_id: project.id, group_id: groupId, snippet: VALID_SNIPPET });
+      .send({ project_id: project.id, faculty_id: faculty.user.id, snippet: VALID_SNIPPET });
 
     expect(res.status).toBe(409);
   });
@@ -188,7 +214,7 @@ describe('POST /api/requests', () => {
     const res = await request(projectApp)
       .post('/api/requests')
       .set(authHeader(leader.token))
-      .send({ project_id: project.id }); // missing group_id and snippet
+      .send({ project_id: project.id }); // missing faculty_id and snippet
     expect(res.status).toBe(400);
   });
 
@@ -197,7 +223,7 @@ describe('POST /api/requests', () => {
     const res = await request(projectApp)
       .post('/api/requests')
       .set(authHeader(faculty.token))
-      .send({ project_id: project.id, group_id: groupId, snippet: VALID_SNIPPET });
+      .send({ project_id: project.id, faculty_id: faculty.user.id, snippet: VALID_SNIPPET });
     expect(res.status).toBe(403);
   });
 });
@@ -206,24 +232,31 @@ describe('POST /api/requests', () => {
 describe('GET /api/requests/faculty', () => {
   // Test 83
   it('faculty sees all requests with group name and member list', async () => {
-    const faculty = await createFaculty();
-    const project = await createProject(faculty.token);
-
+    const receivingFaculty = await createFaculty();
     const leader = await createStudent();
     const [m1, m2] = [await createStudent(), await createStudent()];
     const { groupId } = await createFullGroup(
       leader.token,
       [{ email: m1.user.email, token: m1.token }, { email: m2.user.email, token: m2.token }]
     );
+    const pres = await request(projectApp)
+      .post('/api/projects')
+      .set(authHeader(leader.token))
+      .send({
+        title: 'Listed project',
+        description: 'For faculty inbox',
+        group_id: groupId,
+      });
+    const project = pres.body.project;
 
     await request(projectApp)
       .post('/api/requests')
       .set(authHeader(leader.token))
-      .send({ project_id: project.id, group_id: groupId, snippet: VALID_SNIPPET });
+      .send({ project_id: project.id, faculty_id: receivingFaculty.user.id, snippet: VALID_SNIPPET });
 
     const res = await request(projectApp)
       .get('/api/requests/faculty')
-      .set(authHeader(faculty.token));
+      .set(authHeader(receivingFaculty.token));
 
     expect(res.status).toBe(200);
     expect(res.body.requests.length).toBe(1);
@@ -258,19 +291,26 @@ describe('PUT /api/requests/:id/status', () => {
 
   beforeEach(async () => {
     faculty = await createFaculty();
-    project = await createProject(faculty.token);
-
     leader = await createStudent();
     invitees = [await createStudent(), await createStudent()];
     ({ groupId } = await createFullGroup(
       leader.token,
       invitees.map((i) => ({ email: i.user.email, token: i.token }))
     ));
+    const pres = await request(projectApp)
+      .post('/api/projects')
+      .set(authHeader(leader.token))
+      .send({
+        title: 'Status test project',
+        description: 'For PUT /requests/:id/status',
+        group_id: groupId,
+      });
+    project = pres.body.project;
 
     const reqRes = await request(projectApp)
       .post('/api/requests')
       .set(authHeader(leader.token))
-      .send({ project_id: project.id, group_id: groupId, snippet: VALID_SNIPPET });
+      .send({ project_id: project.id, faculty_id: faculty.user.id, snippet: VALID_SNIPPET });
     requestId = reqRes.body.request_id;
   });
 
@@ -348,36 +388,42 @@ describe('PUT /api/requests/:id/status', () => {
 
 // ─────────────────────────────────────────────────────────────────
 describe('Capacity Enforcement', () => {
-  /**
-   * Helper: build a complete group + request for a given project.
-   */
-  const buildGroupAndRequest = async (projectId, facultyToken) => {
+  const buildGroupProjectAndRequest = async (facultyUserId) => {
     const groupLeader = await createStudent();
-    const members = [await createStudent(), await createStudent()]; // total 3 accepted after setup
-
+    const members = [await createStudent(), await createStudent()];
     const { groupId } = await createFullGroup(
       groupLeader.token,
       members.map((m) => ({ email: m.user.email, token: m.token }))
     );
-
+    const pres = await request(projectApp)
+      .post('/api/projects')
+      .set(authHeader(groupLeader.token))
+      .send({
+        title: 'Capacity test project',
+        description: 'Description',
+        group_id: groupId,
+      });
+    const projectId = pres.body.project.id;
     const reqRes = await request(projectApp)
       .post('/api/requests')
       .set(authHeader(groupLeader.token))
-      .send({ project_id: projectId, group_id: groupId, snippet: VALID_SNIPPET });
-
-    return { groupLeader, groupId, requestId: reqRes.body.request_id };
+      .send({
+        project_id: projectId,
+        faculty_id: facultyUserId,
+        snippet: VALID_SNIPPET,
+      });
+    if (reqRes.status !== 201) throw new Error(`seed request failed: ${JSON.stringify(reqRes.body)}`);
+    return { groupLeader, groupId, projectId, requestId: reqRes.body.request_id };
   };
 
   // Test 93
   it('faculty at max_capacity=3 cannot accept a 4th request → 400', async () => {
     const faculty = await createFaculty();
 
-    // Create 4 separate projects and groups
     const reqs = [];
     for (let i = 0; i < 4; i++) {
-      const project = await createProject(faculty.token, { title: `Proj ${i}` });
-      const { requestId } = await buildGroupAndRequest(project.id, faculty.token);
-      reqs.push({ requestId, projectId: project.id });
+      const { requestId, projectId } = await buildGroupProjectAndRequest(faculty.user.id);
+      reqs.push({ requestId, projectId });
     }
 
     // Accept the first 3
@@ -413,8 +459,7 @@ describe('Capacity Enforcement', () => {
       .set(authHeader(faculty.token))
       .send({ max_capacity: 1 });
 
-    const project = await createProject(faculty.token);
-    const { requestId } = await buildGroupAndRequest(project.id, faculty.token);
+    const { requestId } = await buildGroupProjectAndRequest(faculty.user.id);
 
     const res = await request(projectApp)
       .put(`/api/requests/${requestId}/status`)
@@ -427,50 +472,63 @@ describe('Capacity Enforcement', () => {
 
 // ─────────────────────────────────────────────────────────────────
 describe('Auto-Closure', () => {
-  const buildGroupAndRequest = async (projectId, facultyToken) => {
+  const buildGroupProjectAndRequest = async (facultyUserId) => {
     const leader = await createStudent();
     const members = [await createStudent(), await createStudent()];
     const { groupId } = await createFullGroup(
       leader.token,
       members.map((m) => ({ email: m.user.email, token: m.token }))
     );
+    const pres = await request(projectApp)
+      .post('/api/projects')
+      .set(authHeader(leader.token))
+      .send({
+        title: 'Auto-closure project',
+        description: 'Description',
+        group_id: groupId,
+      });
+    const projectId = pres.body.project.id;
     const reqRes = await request(projectApp)
       .post('/api/requests')
       .set(authHeader(leader.token))
-      .send({ project_id: projectId, group_id: groupId, snippet: VALID_SNIPPET });
-    return { leader, groupId, requestId: reqRes.body.request_id };
+      .send({
+        project_id: projectId,
+        faculty_id: facultyUserId,
+        snippet: VALID_SNIPPET,
+      });
+    if (reqRes.status !== 201) throw new Error(`seed request failed: ${JSON.stringify(reqRes.body)}`);
+    return { leader, groupId, projectId, requestId: reqRes.body.request_id };
   };
 
   // Test 95
-  it("accepting to max_capacity auto-closes all faculty's remaining open projects", async () => {
+  it('accepting at max_capacity rejects other pending requests to the same faculty', async () => {
     const faculty = await createFaculty();
 
-    // Set max capacity to 1 for quick test
     await request(userApp)
       .put('/api/users/me')
       .set(authHeader(faculty.token))
       .send({ max_capacity: 1 });
 
-    const proj1 = await createProject(faculty.token, { title: 'Project 1' });
-    const proj2 = await createProject(faculty.token, { title: 'Project 2' }); // will be auto-closed
+    const { requestId: req1Id, projectId: _proj1 } = await buildGroupProjectAndRequest(faculty.user.id);
+    const { requestId: req2Id, projectId: proj2 } = await buildGroupProjectAndRequest(faculty.user.id);
 
-    const { requestId: req1Id } = await buildGroupAndRequest(proj1.id, faculty.token);
-
-    // Accept req1 → hits max_capacity → proj2 should be closed
     await request(projectApp)
       .put(`/api/requests/${req1Id}/status`)
       .set(authHeader(faculty.token))
       .send({ status: 'accepted' });
 
+    const req2row = await db('project_requests').where({ id: req2Id }).first();
+    expect(req2row.status).toBe('rejected');
+
     const proj2Res = await request(projectApp)
-      .get(`/api/projects/${proj2.id}`)
+      .get(`/api/projects/${proj2}`)
       .set(authHeader(faculty.token));
 
-    expect(proj2Res.body.project.status).toBe('closed');
+    expect(proj2Res.body.project.status).toBe('open');
   });
 
   // Test 96
-  it('auto-closure does NOT affect already in_progress or closed projects', async () => {
+  it('accepting at capacity does not change unrelated project statuses', async () => {
     const faculty = await createFaculty();
 
     await request(userApp)
@@ -478,24 +536,31 @@ describe('Auto-Closure', () => {
       .set(authHeader(faculty.token))
       .send({ max_capacity: 1 });
 
-    // Manually set a project to in_progress
-    const proj_in_progress = await createProject(faculty.token, { title: 'In Progress' });
+    const ownerA = await createStudent();
+    const pIp = await request(projectApp)
+      .post('/api/projects')
+      .set(authHeader(ownerA.token))
+      .send({ title: 'In Progress', description: 'D' });
+    expect(pIp.status).toBe(201);
+    const proj_in_progress = pIp.body.project;
     await db('projects').where({ id: proj_in_progress.id }).update({ status: 'in_progress' });
 
-    // Manually set a project to closed already
-    const proj_closed = await createProject(faculty.token, { title: 'Already Closed' });
+    const ownerB = await createStudent();
+    const pCl = await request(projectApp)
+      .post('/api/projects')
+      .set(authHeader(ownerB.token))
+      .send({ title: 'Already Closed', description: 'D' });
+    expect(pCl.status).toBe(201);
+    const proj_closed = pCl.body.project;
     await db('projects').where({ id: proj_closed.id }).update({ status: 'closed' });
 
-    // The project to accept a request on
-    const proj_open = await createProject(faculty.token, { title: 'Open' });
-    const { requestId } = await buildGroupAndRequest(proj_open.id, faculty.token);
+    const { requestId } = await buildGroupProjectAndRequest(faculty.user.id);
 
     await request(projectApp)
       .put(`/api/requests/${requestId}/status`)
       .set(authHeader(faculty.token))
       .send({ status: 'accepted' });
 
-    // Both pre-existing statuses should be unchanged
     const ipRes = await request(projectApp)
       .get(`/api/projects/${proj_in_progress.id}`)
       .set(authHeader(faculty.token));
@@ -508,39 +573,27 @@ describe('Auto-Closure', () => {
   });
 
   // Test 97
-  it('new requests to auto-closed projects return 400 "project is closed"', async () => {
+  it('returns 400 when owner submits mentorship for a closed project', async () => {
     const faculty = await createFaculty();
-
-    await request(userApp)
-      .put('/api/users/me')
-      .set(authHeader(faculty.token))
-      .send({ max_capacity: 1 });
-
-    const proj1 = await createProject(faculty.token, { title: 'Accept Me' });
-    const proj2 = await createProject(faculty.token, { title: 'Will Close' });
-
-    const { requestId } = await buildGroupAndRequest(proj1.id, faculty.token);
-
-    // Accept → auto-closes proj2
-    await request(projectApp)
-      .put(`/api/requests/${requestId}/status`)
-      .set(authHeader(faculty.token))
-      .send({ status: 'accepted' });
-
-    // Attempt to submit a new request to the now-closed proj2
-    const newLeader = await createStudent();
-    const newMembers = [await createStudent(), await createStudent()];
-    const { groupId: newGroupId } = await createFullGroup(
-      newLeader.token,
-      newMembers.map((m) => ({ email: m.user.email, token: m.token }))
-    );
+    const owner = await createStudent();
+    const pres = await request(projectApp)
+      .post('/api/projects')
+      .set(authHeader(owner.token))
+      .send({ title: 'Closed proj', description: 'D' });
+    expect(pres.status).toBe(201);
+    const proj = pres.body.project;
+    await db('projects').where({ id: proj.id }).update({ status: 'closed' });
 
     const newReqRes = await request(projectApp)
       .post('/api/requests')
-      .set(authHeader(newLeader.token))
-      .send({ project_id: proj2.id, group_id: newGroupId, snippet: VALID_SNIPPET });
+      .set(authHeader(owner.token))
+      .send({
+        project_id: proj.id,
+        faculty_id: faculty.user.id,
+        snippet: VALID_SNIPPET,
+      });
 
     expect(newReqRes.status).toBe(400);
-    expect(newReqRes.body.error).toMatch(/closed/i);
+    expect(newReqRes.body.error).toMatch(/open/i);
   });
 });

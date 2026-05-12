@@ -19,6 +19,9 @@ module.exports = {
       directory: './src/migrations',
       tableName: 'knex_migrations',
     },
+    seeds: {
+      directory: './src/seeds',
+    },
     pool: { min: 2, max: 10 },
   },
 
@@ -28,6 +31,9 @@ module.exports = {
     migrations: {
       directory: './src/migrations',
       tableName: 'knex_migrations',
+    },
+    seeds: {
+      directory: './src/seeds',
     },
     pool: { min: 2, max: 10 },
   },

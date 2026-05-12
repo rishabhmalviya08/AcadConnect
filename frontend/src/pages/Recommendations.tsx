@@ -1,6 +1,6 @@
-import { useState } from 'react';
-import { recommendationApi } from '../services/api';
-import { Search, Loader2, Star, BookOpen, Sparkles, GraduationCap, Send, CheckCircle } from 'lucide-react';
+import { useState, useEffect, useCallback } from 'react';
+import { projectApi } from '../services/api';
+import { Search, Loader2, Star, BookOpen, Sparkles, GraduationCap, Send, CheckCircle, Users, RefreshCw } from 'lucide-react';
 import { RequestMentorModal } from '../components/RequestMentorModal';
 
 interface FacultyRecommendation {
@@ -12,6 +12,20 @@ interface FacultyRecommendation {
   [key: string]: any;
 }
 
+interface FacultyDirectoryItem {
+  faculty_id: string | null;
+  name: string;
+  research_areas: string[];
+  email?: string | null;
+  in_database?: boolean;
+}
+
+interface FacultyDirectoryMeta {
+  source?: string;
+  faculty_json_path?: string | null;
+  read_error?: string | null;
+}
+
 export const Recommendations = () => {
   const [skills, setSkills] = useState('');
   const [interests, setInterests] = useState('');
@@ -20,6 +34,34 @@ export const Recommendations = () => {
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
   const [hasSearched, setHasSearched] = useState(false);
+
+  const [directory, setDirectory] = useState<FacultyDirectoryItem[]>([]);
+  const [dirMeta, setDirMeta] = useState<FacultyDirectoryMeta | null>(null);
+  const [dirLoading, setDirLoading] = useState(true);
+  const [dirError, setDirError] = useState('');
+
+  const loadDirectory = useCallback(async () => {
+    setDirLoading(true);
+    setDirError('');
+    try {
+      const res = await projectApi.get<{ faculty: FacultyDirectoryItem[]; meta?: FacultyDirectoryMeta }>('faculty');
+      const list = res.data?.faculty ?? [];
+      setDirectory(Array.isArray(list) ? list : []);
+      setDirMeta(res.data?.meta ?? null);
+    } catch (err: any) {
+      const raw = err.response?.data?.error ?? err.response?.data?.detail;
+      const msg = typeof raw === 'string' ? raw : Array.isArray(raw) ? raw.map((x: any) => x?.msg || x).join(' ') : '';
+      setDirError(msg || 'Could not load faculty directory. Is project-service running on port 3002?');
+      setDirectory([]);
+      setDirMeta(null);
+    } finally {
+      setDirLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadDirectory();
+  }, [loadDirectory]);
 
   // Request Mentor modal
   const [requestFaculty, setRequestFaculty] = useState<{ id: string; name: string } | null>(null);
@@ -37,7 +79,7 @@ export const Recommendations = () => {
       if (skills.trim()) params.skills = skills.trim();
       if (interests.trim()) params.interests = interests.trim();
 
-      const response = await recommendationApi.get('/recommend/faculty', { params });
+      const response = await projectApi.get('/recommend/faculty', { params });
       const data = response.data;
       const rawRecs: FacultyRecommendation[] = Array.isArray(data) ? data : data.recommendations || data.results || [];
       const normalized = rawRecs.map((rec) => ({
@@ -47,7 +89,7 @@ export const Recommendations = () => {
       setResults(normalized);
     } catch (err: any) {
       console.error('Recommendation error:', err);
-      setError(err.response?.data?.error || 'Failed to fetch recommendations. The recommendation service may not be running.');
+      setError(err.response?.data?.error || 'Failed to fetch recommendations. Try different keywords or check that project-service is running.');
     } finally {
       setIsLoading(false);
     }
@@ -82,6 +124,107 @@ export const Recommendations = () => {
       <div>
         <h2 className="text-2xl font-bold text-slate-900">Faculty Recommendations</h2>
         <p className="text-slate-500">Find faculty mentors that match your skills and interests.</p>
+      </div>
+
+      {/* Faculty directory — loaded from faculty.json when available (re-read on each load / Refresh) */}
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+          <div className="flex items-center gap-2">
+            <Users className="w-5 h-5 text-slate-500" />
+            <h3 className="text-lg font-semibold text-slate-900">Faculty directory</h3>
+          </div>
+          <button
+            type="button"
+            onClick={() => loadDirectory()}
+            disabled={dirLoading}
+            className="inline-flex items-center justify-center gap-2 self-start sm:self-auto px-3 py-2 text-sm font-medium text-slate-700 bg-slate-100 border border-slate-200 rounded-lg hover:bg-slate-200 disabled:opacity-50"
+          >
+            {dirLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+            Refresh list
+          </button>
+        </div>
+        {dirMeta?.faculty_json_path && (
+          <p className="text-xs text-slate-500 mb-3 break-all">
+            Source: {dirMeta.source === 'faculty.json' ? 'faculty.json' : dirMeta.source}
+            {dirMeta.faculty_json_path ? ` · ${dirMeta.faculty_json_path}` : ''}
+          </p>
+        )}
+        {dirMeta?.read_error && (
+          <p className="text-xs text-amber-800 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2 mb-3">
+            {dirMeta.read_error}
+          </p>
+        )}
+        {dirLoading && (
+          <div className="flex items-center gap-2 text-slate-500 text-sm py-6">
+            <Loader2 className="w-4 h-4 animate-spin" />
+            Loading faculty…
+          </div>
+        )}
+        {dirError && !dirLoading && (
+          <p className="text-sm text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">{dirError}</p>
+        )}
+        {!dirLoading && !dirError && directory.length === 0 && (
+          <p className="text-sm text-slate-500">
+            No faculty entries found. Add or fix <code className="text-xs bg-slate-100 px-1 rounded">faculty.json</code> (or set{' '}
+            <code className="text-xs bg-slate-100 px-1 rounded">FACULTY_JSON_PATH</code> in project-service env), then click Refresh.
+          </p>
+        )}
+        {!dirLoading && directory.length > 0 && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 max-h-[min(420px,50vh)] overflow-y-auto pr-1">
+            {directory.map((f, idx) => {
+              const isRequested = requestedFaculty.has(f.name);
+              const rowKey = f.email || f.faculty_id || `${f.name}-${idx}`;
+              return (
+                <div
+                  key={rowKey}
+                  className="rounded-xl border border-slate-100 bg-slate-50/80 p-4 flex flex-col gap-2"
+                >
+                  <div className="flex items-center gap-2">
+                    <div className="w-9 h-9 rounded-full bg-primary-100 flex items-center justify-center text-primary-700 font-semibold text-sm shrink-0">
+                      {f.name?.charAt(0)?.toUpperCase() || '?'}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="font-medium text-slate-900 text-sm truncate">{f.name}</p>
+                    <p className="text-xs text-slate-500">
+                      Faculty{f.in_database === false ? ' (not in app DB yet)' : ''}
+                    </p>
+                  </div>
+                </div>
+                  <div className="flex flex-wrap gap-1">
+                    {(f.research_areas || []).slice(0, 4).map((area, i) => (
+                      <span
+                        key={i}
+                        className="inline-flex px-2 py-0.5 bg-white text-purple-700 rounded-full text-xs font-medium border border-purple-100"
+                      >
+                        {area}
+                      </span>
+                    ))}
+                    {(f.research_areas || []).length > 4 && (
+                      <span className="text-xs text-slate-400 self-center">+{(f.research_areas || []).length - 4} more</span>
+                    )}
+                  </div>
+                  {isRequested ? (
+                    <div className="mt-auto flex items-center justify-center gap-1 text-xs font-medium text-emerald-700 pt-1">
+                      <CheckCircle className="w-3.5 h-3.5" />
+                      Request sent
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setRequestFaculty({ id: f.faculty_id || '', name: f.name })}
+                      className="mt-auto inline-flex items-center justify-center gap-1 px-3 py-2 text-xs font-medium text-white bg-primary-600 rounded-lg hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                      title={!f.name?.trim() ? 'Missing name' : undefined}
+                      disabled={!f.name?.trim()}
+                    >
+                      <Send className="w-3.5 h-3.5" />
+                      Request mentor
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {/* Search Form */}

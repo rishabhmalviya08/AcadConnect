@@ -18,14 +18,26 @@ export const Login = () => {
     setIsLoading(true);
 
     try {
-      const response = await authApi.post('/auth/login', { email, password });
+      const response = await authApi.post('/auth/login', {
+        email: email.trim().toLowerCase(),
+        password,
+      });
       const { user, token } = response.data;
       
       login(user, token);
       navigate('/dashboard');
     } catch (err: any) {
       console.error('Login error:', err);
-      setError(err.response?.data?.error || 'Invalid email or password');
+      const res = err.response;
+      if (!res) {
+        setError(
+          'Could not reach the sign-in server. Confirm user-service is running (port 3001) and try again.'
+        );
+      } else if (res.status === 401) {
+        setError(res.data?.error || 'Invalid email or password');
+      } else {
+        setError(res.data?.error || `Sign-in failed (${res.status}). Try again.`);
+      }
     } finally {
       setIsLoading(false);
     }

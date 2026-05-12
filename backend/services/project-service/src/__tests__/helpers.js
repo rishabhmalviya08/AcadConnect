@@ -65,8 +65,8 @@ const createFaculty = async (overrides = {}) => {
   return { user: res.body.user, token: res.body.token };
 };
 
-// ─── Project Factory ─────────────────────────────────────────────
-const createProject = async (facultyToken, overrides = {}) => {
+// ─── Project Factory (student creator) ─────────────────────────
+const createProject = async (studentToken, overrides = {}) => {
   const payload = {
     title: 'Test Project',
     description: 'A test project description',
@@ -74,7 +74,7 @@ const createProject = async (facultyToken, overrides = {}) => {
   };
   const res = await request(projectApp)
     .post('/api/projects')
-    .set(authHeader(facultyToken))
+    .set(authHeader(studentToken))
     .send(payload);
   if (res.status !== 201) throw new Error(`createProject failed: ${JSON.stringify(res.body)}`);
   return res.body.project;

@@ -1,8 +1,6 @@
-#!/Users/rishabhmalviya/Desktop/AcadConnect/backend/services/ai-feedback-service/.venv/bin/python3.11
-# -*- coding: utf-8 -*-
-import re
+#!/Users/ankitanand/Acad-Rishabh/AcadConnect/backend/services/ai-feedback-service/.venv/bin/python3.11
 import sys
 from distro.distro import main
 if __name__ == '__main__':
-    sys.argv[0] = re.sub(r'(-script\.pyw|\.exe)?$', '', sys.argv[0])
+    sys.argv[0] = sys.argv[0].removesuffix('.exe')
     sys.exit(main())

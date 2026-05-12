@@ -17,7 +17,8 @@ const router = express.Router();
  */
 router.post('/register', async (req, res, next) => {
   try {
-    const { name, email, password, role } = req.body;
+    const { name, password, role } = req.body;
+    const email = typeof req.body.email === 'string' ? req.body.email.trim().toLowerCase() : '';
 
     // ── Validation ──────────────────────────────────────────
     if (!name || !email || !password || !role) {
@@ -30,8 +31,10 @@ router.post('/register', async (req, res, next) => {
       throw createError(400, 'password must be at least 8 characters');
     }
 
-    // ── Check duplicate email ────────────────────────────────
-    const existing = await db('users').where({ email }).first();
+    // ── Check duplicate email (case-insensitive vs existing rows) ──
+    const existing = await db('users')
+      .whereRaw('LOWER(TRIM(email)) = ?', [email])
+      .first();
     if (existing) throw createError(409, 'Email already registered');
 
     // ── Hash password & insert user ──────────────────────────
@@ -92,13 +95,16 @@ router.post('/register', async (req, res, next) => {
  */
 router.post('/login', async (req, res, next) => {
   try {
-    const { email, password } = req.body;
+    const { password } = req.body;
+    const email = typeof req.body.email === 'string' ? req.body.email.trim().toLowerCase() : '';
 
     if (!email || !password) {
       throw createError(400, 'email and password are required');
     }
 
-    const user = await db('users').where({ email }).first();
+    const user = await db('users')
+      .whereRaw('LOWER(TRIM(email)) = ?', [email])
+      .first();
     if (!user) throw createError(401, 'Invalid credentials');
 
     const match = await bcrypt.compare(password, user.password_hash);

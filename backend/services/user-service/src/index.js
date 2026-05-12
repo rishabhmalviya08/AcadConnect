@@ -4,6 +4,7 @@ const cors = require('cors');
 const http = require('http');
 const { WebSocketServer } = require('ws');
 const db = require('./db/knex');
+const { syncDevAccounts } = require('./lib/syncDevAccounts');
 const { attachWebSocketServer, startNotificationListener } = require('./realtime/notificationsHub');
 
 const app = express();
@@ -56,9 +57,23 @@ if (require.main === module) {
   attachWebSocketServer(wss, db);
   startNotificationListener(db);
 
-  server.listen(PORT, () => {
-    console.log(`[user-service] Running on port ${PORT} (HTTP + WS)`);
-  });
+  (async () => {
+    if (process.env.DISABLE_DEV_ACCOUNT_SEED !== '1') {
+      try {
+        const r = await syncDevAccounts(db);
+        if (!r.skipped) {
+          console.log(
+            `[user-service] Dev roster synced (${r.count} accounts). Password: set DEV_SEED_PASSWORD or default 12345678 — see src/lib/syncDevAccounts.js`
+          );
+        }
+      } catch (err) {
+        console.error('[user-service] Dev roster sync failed:', err.message);
+      }
+    }
+    server.listen(PORT, () => {
+      console.log(`[user-service] Running on port ${PORT} (HTTP + WS)`);
+    });
+  })();
 }
 
 module.exports = app;

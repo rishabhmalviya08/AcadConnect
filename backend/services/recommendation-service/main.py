@@ -17,7 +17,13 @@ from typing import Optional
 import asyncio
 
 from fastapi.middleware.cors import CORSMiddleware
-from models import FacultyRecommendation, RecommendResponse, SyncResponse
+from models import (
+    FacultyListItem,
+    FacultyListResponse,
+    FacultyRecommendation,
+    RecommendResponse,
+    SyncResponse,
+)
 from embeddings import embed_text
 
 load_dotenv()
@@ -122,6 +128,21 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.get("/api/faculty", response_model=FacultyListResponse)
+async def list_faculty():
+    """Return all faculty (from Postgres) for directory display; no embeddings required."""
+    rows = fetch_all_faculty()
+    faculty = [
+        FacultyListItem(
+            faculty_id=str(r["id"]),
+            name=r["name"],
+            research_areas=list(r.get("research_areas") or []),
+        )
+        for r in sorted(rows, key=lambda x: (x.get("name") or "").lower())
+    ]
+    return FacultyListResponse(faculty=faculty)
 
 
 @app.get("/health")

@@ -2,6 +2,7 @@ require('dotenv').config({ path: '../../.env' });
 const express = require('express');
 const cors = require('cors');
 const db = require('./db/knex');
+const { syncDevSampleProjects } = require('./lib/syncDevSampleProjects');
 
 const app = express();
 const PORT = process.env.PROJECT_SERVICE_PORT || 3002;
@@ -25,6 +26,8 @@ app.get('/health', async (req, res) => {
 app.use('/api/projects',  require('./routes/projects'));
 app.use('/api/groups',    require('./routes/groups'));
 app.use('/api/requests',  require('./routes/requests'));
+app.use('/api/faculty',  require('./routes/faculty'));
+app.use('/api/recommend', require('./routes/recommend'));
 app.use('/api', require('./routes/progress'));
 
 // ─── 404 Handler ─────────────────────────────────────────
@@ -47,9 +50,25 @@ app.use((err, req, res, next) => {
 
 // ─── Start ───────────────────────────────────────────────
 if (require.main === module) {
-  app.listen(PORT, () => {
-    console.log(`[project-service] Running on port ${PORT}`);
-  });
+  (async () => {
+    try {
+      const r = await syncDevSampleProjects(db);
+      if (r.skipped) {
+        if (r.reason && r.reason.startsWith('no student user')) {
+          console.log(`[project-service] Demo projects not seeded: ${r.reason}`);
+        }
+      } else if (r.inserted > 0) {
+        console.log(`[project-service] Seeded ${r.inserted} demo SE/CS project(s)`);
+      } else {
+        console.log('[project-service] Demo SE/CS projects already present');
+      }
+    } catch (err) {
+      console.error('[project-service] Demo project seed failed:', err.message);
+    }
+    app.listen(PORT, () => {
+      console.log(`[project-service] Running on port ${PORT}`);
+    });
+  })();
 }
 
 module.exports = app;

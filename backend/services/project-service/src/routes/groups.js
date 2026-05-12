@@ -1,58 +1,93 @@
 const express = require('express');
 const { v4: uuidv4 } = require('uuid');
 const db = require('../db/knex');
+const { MAX_GROUP_MEMBERS } = require('../constants/groupLimits');
 const { authenticate, authorize } = require('../middleware/auth');
 const { createError } = require('../utils/errors');
 
 const router = express.Router();
 
+const notifyUser = async (trx, { userId, type, title, message, metadata = {} }) => {
+  await trx('notifications').insert({
+    id: uuidv4(),
+    user_id: userId,
+    type,
+    title,
+    message,
+    metadata,
+  });
+};
+
 /**
  * POST /api/groups
- * Creates a new student group and sends pending invites to members.
- * Enforces 3-5 members (including the leader).
+ * Creates a new student group; the creator is the leader and first accepted member.
+ * Optional pending invites: member_emails (0 to MAX_GROUP_MEMBERS-1 students).
+ * Linking a group to a project has no minimum member count; roster is capped at MAX_GROUP_MEMBERS.
  * Student only.
  *
- * Body: { name: "Team Alpha", member_emails: ["bob@uni.edu", "charlie@uni.edu"] }
+ * Body: { name: "Team Alpha", member_emails?: ["bob@uni.edu"] }
  */
 router.post('/', authenticate, authorize('student'), async (req, res, next) => {
   try {
-    const { name, member_emails } = req.body;
+    const { name, member_emails: rawEmails } = req.body;
     const leaderId = req.user.id;
 
-    if (!name || !member_emails || !Array.isArray(member_emails)) {
-      throw createError(400, 'name and member_emails (array) are required');
+    if (!name || typeof name !== 'string' || !name.trim()) {
+      throw createError(400, 'name is required');
     }
 
-    // Include the leader in the count
+    let member_emails = [];
+    if (rawEmails !== undefined && rawEmails !== null) {
+      if (!Array.isArray(rawEmails)) {
+        throw createError(400, 'member_emails must be an array when provided');
+      }
+      const seen = new Set();
+      for (const e of rawEmails) {
+        const trimmed = e != null ? String(e).trim() : '';
+        if (!trimmed) continue;
+        const key = trimmed.toLowerCase();
+        if (seen.has(key)) continue;
+        seen.add(key);
+        member_emails.push(trimmed);
+      }
+    }
+
+    const leaderEmail = String(req.user.email || '').trim().toLowerCase();
+    for (const e of member_emails) {
+      if (e.toLowerCase() === leaderEmail) {
+        throw createError(400, 'Do not include your own email in member_emails.');
+      }
+    }
+
     const totalMembers = member_emails.length + 1;
-    if (totalMembers < 3 || totalMembers > 5) {
-      throw createError(400, `A group must have 3 to 5 members. You provided ${member_emails.length} invites.`);
-    }
-
-    // You cannot invite yourself
-    if (member_emails.includes(req.user.email)) {
-      throw createError(400, 'Do not include your own email in member_emails.');
+    if (totalMembers > MAX_GROUP_MEMBERS) {
+      throw createError(
+        400,
+        `A group can have at most ${MAX_GROUP_MEMBERS} members (including you). You provided ${member_emails.length} invites.`
+      );
     }
 
     const groupId = uuidv4();
 
     await db.transaction(async (trx) => {
-      // 1. Verify all member emails exist and are students
-      const invitees = await trx('users')
-        .select('id', 'email')
-        .whereIn('email', member_emails)
-        .andWhere('role', 'student');
+      let invitees = [];
+      if (member_emails.length > 0) {
+        invitees = await trx('users')
+          .select('id', 'email')
+          .whereIn('email', member_emails)
+          .andWhere('role', 'student');
 
-      if (invitees.length !== member_emails.length) {
-        const foundEmails = invitees.map(u => u.email);
-        const missing = member_emails.filter(e => !foundEmails.includes(e));
-        throw createError(404, `The following emails do not belong to registered students: ${missing.join(', ')}`);
+        if (invitees.length !== member_emails.length) {
+          const foundEmails = invitees.map((u) => u.email);
+          const missing = member_emails.filter((e) => !foundEmails.includes(e));
+          throw createError(404, `The following emails do not belong to registered students: ${missing.join(', ')}`);
+        }
       }
 
       // 2. Create the group
       await trx('groups').insert({
         id: groupId,
-        name,
+        name: name.trim(),
         leader_id: leaderId,
       });
 
@@ -66,7 +101,7 @@ router.post('/', authenticate, authorize('student'), async (req, res, next) => {
         membersToInsert.push({
           group_id: groupId,
           student_id: invitee.id,
-          status: 'pending'
+          status: 'pending',
         });
       }
 
@@ -74,7 +109,7 @@ router.post('/', authenticate, authorize('student'), async (req, res, next) => {
     });
 
     res.status(201).json({
-      message: 'Group created and invites sent',
+      message: member_emails.length ? 'Group created and invites sent' : 'Group created',
       group_id: groupId,
     });
   } catch (err) {
@@ -86,6 +121,77 @@ router.post('/', authenticate, authorize('student'), async (req, res, next) => {
  * PUT /api/groups/:id/accept-invite
  * Accepts a pending invite for the authenticated student.
  */
+/**
+ * POST /api/groups/:id/invite
+ * Group leader invites an additional student (max 4 members total in group).
+ */
+router.post('/:id/invite', authenticate, authorize('student'), async (req, res, next) => {
+  try {
+    const groupId = req.params.id;
+    const { member_email } = req.body;
+    if (!member_email || typeof member_email !== 'string') {
+      throw createError(400, 'member_email is required');
+    }
+    const email = member_email.trim().toLowerCase();
+    if (!email) throw createError(400, 'member_email is required');
+
+    const group = await db('groups').where({ id: groupId }).first();
+    if (!group) throw createError(404, 'Group not found');
+    if (group.leader_id !== req.user.id) {
+      throw createError(403, 'Only the group leader can invite members');
+    }
+
+    const leader = await db('users').where({ id: group.leader_id }).first();
+    if (leader && leader.email.toLowerCase() === email) {
+      throw createError(400, 'You cannot invite yourself');
+    }
+
+    const invitee = await db('users').whereRaw('LOWER(email) = ?', [email]).andWhere('role', 'student').first();
+    if (!invitee) throw createError(404, 'No registered student found with that email');
+
+    await db.transaction(async (trx) => {
+      const totRow = await trx('group_members')
+        .where({ group_id: groupId })
+        .count('* as count')
+        .first();
+      if (Number(totRow?.count || 0) >= MAX_GROUP_MEMBERS) {
+        throw createError(
+          400,
+          `This group already has the maximum of ${MAX_GROUP_MEMBERS} members`
+        );
+      }
+
+      const existing = await trx('group_members').where({ group_id: groupId, student_id: invitee.id }).first();
+      if (existing) {
+        if (existing.status === 'accepted') {
+          throw createError(400, 'This student is already in the group');
+        }
+        await trx('group_members')
+          .where({ group_id: groupId, student_id: invitee.id })
+          .update({ status: 'pending', updated_at: trx.fn.now() });
+      } else {
+        await trx('group_members').insert({
+          group_id: groupId,
+          student_id: invitee.id,
+          status: 'pending',
+        });
+      }
+
+      await notifyUser(trx, {
+        userId: invitee.id,
+        type: 'group_invite',
+        title: 'New group invitation',
+        message: `You were invited to join the group "${group.name}".`,
+        metadata: { group_id: groupId },
+      });
+    });
+
+    res.status(201).json({ message: 'Invitation sent', student_id: invitee.id });
+  } catch (err) {
+    next(err);
+  }
+});
+
 router.put('/:id/accept-invite', authenticate, authorize('student'), async (req, res, next) => {
   try {
     const groupId = req.params.id;
@@ -121,6 +227,7 @@ router.get('/me', authenticate, authorize('student'), async (req, res, next) => 
       .select(
         'g.id as group_id',
         'g.name',
+        'g.leader_id',
         'leader.name as leader_name',
         'gm.status as my_status',
         'g.created_at'

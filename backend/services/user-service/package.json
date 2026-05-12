@@ -9,6 +9,11 @@
     "migrate": "knex migrate:latest",
     "migrate:rollback": "knex migrate:rollback",
     "migrate:status": "knex migrate:status",
+    "seed:dev": "knex seed:run --specific=dev_accounts.js",
+    "seed:faculty": "node scripts/seed-faculty-from-json.js",
+    "seed:demo-users": "node scripts/seed-demo-users.js",
+    "seed:demo-users:reset-password": "SEED_DEMO_UPDATE_PASSWORD=1 node scripts/seed-demo-users.js",
+    "emergency:reset-passwords": "node scripts/emergency-reset-passwords.js",
     "test": "jest --runInBand --forceExit",
     "test:watch": "jest --runInBand --watch"
   },

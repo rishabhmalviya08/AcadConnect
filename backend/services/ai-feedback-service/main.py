@@ -19,7 +19,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from auth_jwt import decode_role_and_sub
 from chat_faq import answer_faq_chat
 from db import get_feedback_collection, close_client
-from feedback import generate_feedback
+from feedback import generate_feedback, OpenAIKeyConfigurationError, log_startup_feedback_mode
 from models import (
     FeedbackRequest,
     FeedbackCreatedResponse,
@@ -45,9 +45,8 @@ load_dotenv()
 # ─── Lifespan ──────────────────────────────────────────────────────
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup: nothing to do (Motor connects lazily)
+    log_startup_feedback_mode()
     yield
-    # Shutdown: close the MongoDB connection
     await close_client()
 
 
@@ -128,11 +127,12 @@ async def generate(
         ai_result = await generate_feedback(
             project_title=payload.project_title,
             project_description=payload.project_description,
+            project_abstract=payload.project_abstract,
         )
+    except OpenAIKeyConfigurationError as e:
+        raise HTTPException(status_code=503, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"OpenAI call failed: {str(e)}")
-
-    # Persist to MongoDB
     doc = {
         "request_id": payload.request_id,
         "group_id": payload.group_id,
@@ -206,6 +206,7 @@ async def generate_sync(
         ai_result = await generate_feedback(
             project_title=payload.project_title,
             project_description=payload.project_description,
+            project_abstract=payload.project_abstract,
         )
         return FeedbackSyncResponse(
             relevance_score=ai_result["relevance_score"],
@@ -214,6 +215,8 @@ async def generate_sync(
             suggestions=ai_result["suggestions"],
             summary=ai_result["summary"],
         )
+    except OpenAIKeyConfigurationError as e:
+        raise HTTPException(status_code=503, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"OpenAI call failed: {str(e)}")
 

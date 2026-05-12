@@ -18,6 +18,7 @@ interface RowUser {
   email: string;
   role: string;
   created_at: string;
+  eligibility_status: string | null;
 }
 
 interface AuditRow {
@@ -36,6 +37,9 @@ export const AdminDashboard = () => {
 
   const [users, setUsers] = useState<RowUser[]>([]);
   const [roleFilter, setRoleFilter] = useState<string>('');
+  const [statusFilter, setStatusFilter] = useState<string>('');
+  const [sortBy, setSortBy] = useState<'created_at' | 'role'>('created_at');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
   const [usersLoading, setUsersLoading] = useState(true);
   const [usersError, setUsersError] = useState('');
 
@@ -57,7 +61,12 @@ export const AdminDashboard = () => {
     setUsersLoading(true);
     setUsersError('');
     try {
-      const params = roleFilter ? { role: roleFilter } : {};
+      const params: Record<string, string> = {
+        sort_by: sortBy,
+        sort_dir: sortDir,
+      };
+      if (roleFilter) params.role = roleFilter;
+      if (statusFilter) params.eligibility_status = statusFilter;
       const res = await authApi.get('/admin/users', { params });
       setUsers(res.data.users || []);
     } catch (err: any) {
@@ -65,7 +74,7 @@ export const AdminDashboard = () => {
     } finally {
       setUsersLoading(false);
     }
-  }, [roleFilter]);
+  }, [roleFilter, statusFilter, sortBy, sortDir]);
 
   const fetchLogs = useCallback(async () => {
     setLogsLoading(true);
@@ -168,7 +177,9 @@ export const AdminDashboard = () => {
       )}
 
       <p className="text-xs text-slate-500">
-        User counts reflect the selected role filter; choose &quot;All roles&quot; for system-wide totals.
+        Counts and the table reflect the selected filters. Student status is eligibility (faculty and admins
+        stay listed when a status filter is on). Use &quot;All roles&quot; and clear status for full directory
+        totals.
       </p>
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -191,21 +202,86 @@ export const AdminDashboard = () => {
       </div>
 
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="p-5 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <h3 className="text-lg font-semibold text-slate-900 flex items-center gap-2">
-            <Users className="w-5 h-5 text-slate-500" />
-            Users
-          </h3>
-          <select
-            value={roleFilter}
-            onChange={(e) => setRoleFilter(e.target.value)}
-            className="text-sm border border-slate-300 rounded-lg px-3 py-2 bg-white"
-          >
-            <option value="">All roles</option>
-            <option value="student">Students</option>
-            <option value="faculty">Faculty</option>
-            <option value="admin">Admins</option>
-          </select>
+        <div className="p-5 border-b border-slate-100 flex flex-col gap-3">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <h3 className="text-lg font-semibold text-slate-900 flex items-center gap-2">
+              <Users className="w-5 h-5 text-slate-500" />
+              Users
+            </h3>
+          </div>
+          <div className="flex flex-col lg:flex-row lg:flex-wrap lg:items-end gap-3">
+            <div className="flex flex-col gap-1 min-w-[10rem]">
+              <label htmlFor="admin-filter-role" className="text-xs font-medium text-slate-500">
+                Role
+              </label>
+              <select
+                id="admin-filter-role"
+                value={roleFilter}
+                onChange={(e) => setRoleFilter(e.target.value)}
+                className="text-sm border border-slate-300 rounded-lg px-3 py-2 bg-white"
+              >
+                <option value="">All roles</option>
+                <option value="student">Students</option>
+                <option value="faculty">Faculty</option>
+                <option value="admin">Admins</option>
+              </select>
+            </div>
+            <div className="flex flex-col gap-1 min-w-[12rem]">
+              <label htmlFor="admin-filter-status" className="text-xs font-medium text-slate-500">
+                Student status
+              </label>
+              <select
+                id="admin-filter-status"
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                className="text-sm border border-slate-300 rounded-lg px-3 py-2 bg-white"
+              >
+                <option value="">All statuses</option>
+                <option value="eligible">Eligible</option>
+                <option value="probation">Probation</option>
+                <option value="ineligible">Ineligible</option>
+              </select>
+            </div>
+            <div className="flex flex-col sm:flex-row gap-3 flex-1 lg:justify-end">
+              <div className="flex flex-col gap-1 min-w-[11rem]">
+                <label htmlFor="admin-sort-by" className="text-xs font-medium text-slate-500">
+                  Sort by
+                </label>
+                <select
+                  id="admin-sort-by"
+                  value={sortBy}
+                  onChange={(e) => setSortBy(e.target.value as 'created_at' | 'role')}
+                  className="text-sm border border-slate-300 rounded-lg px-3 py-2 bg-white"
+                >
+                  <option value="created_at">Joined date</option>
+                  <option value="role">Role</option>
+                </select>
+              </div>
+              <div className="flex flex-col gap-1 min-w-[9rem]">
+                <label htmlFor="admin-sort-dir" className="text-xs font-medium text-slate-500">
+                  Order
+                </label>
+                <select
+                  id="admin-sort-dir"
+                  value={sortDir}
+                  onChange={(e) => setSortDir(e.target.value as 'asc' | 'desc')}
+                  className="text-sm border border-slate-300 rounded-lg px-3 py-2 bg-white"
+                >
+                  {sortBy === 'role' ? (
+                    <>
+                      <option value="asc">A → Z (admin, faculty, student)</option>
+                      <option value="desc">Z → A (student, faculty, admin)</option>
+                    </>
+                  ) : (
+                    <>
+                      <option value="desc">Newest first</option>
+                      <option value="asc">Oldest first</option>
+                    </>
+                  )}
+                </select>
+              </div>
+            </div>
+          </div>
         </div>
 
         {usersError && (
@@ -226,6 +302,7 @@ export const AdminDashboard = () => {
                   <th className="px-5 py-3">Name</th>
                   <th className="px-5 py-3">Email</th>
                   <th className="px-5 py-3">Role</th>
+                  <th className="px-5 py-3">Status</th>
                   <th className="px-5 py-3">Joined</th>
                   <th className="px-5 py-3 text-right">Actions</th>
                 </tr>
@@ -236,6 +313,9 @@ export const AdminDashboard = () => {
                     <td className="px-5 py-3 font-medium text-slate-900">{u.name}</td>
                     <td className="px-5 py-3">{u.email}</td>
                     <td className="px-5 py-3 capitalize">{u.role}</td>
+                    <td className="px-5 py-3 capitalize text-slate-700">
+                      {u.eligibility_status ? u.eligibility_status.replace('_', ' ') : '—'}
+                    </td>
                     <td className="px-5 py-3 text-slate-500">{new Date(u.created_at).toLocaleDateString()}</td>
                     <td className="px-5 py-3 text-right">
                       {u.role === 'student' ? (
@@ -266,7 +346,7 @@ export const AdminDashboard = () => {
                 ))}
                 {users.length === 0 && (
                   <tr>
-                    <td colSpan={5} className="px-5 py-10 text-center text-slate-500">
+                    <td colSpan={6} className="px-5 py-10 text-center text-slate-500">
                       No users for this filter.
                     </td>
                   </tr>

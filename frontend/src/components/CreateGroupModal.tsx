@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { projectApi } from '../services/api';
 import { X, Loader2, Plus, Trash2 } from 'lucide-react';
+import { MAX_GROUP_MEMBERS } from '../constants/groupLimits';
 
 interface CreateGroupModalProps {
   isOpen: boolean;
@@ -8,9 +9,11 @@ interface CreateGroupModalProps {
   onGroupCreated: () => void;
 }
 
+const maxInvites = MAX_GROUP_MEMBERS - 1;
+
 export const CreateGroupModal = ({ isOpen, onClose, onGroupCreated }: CreateGroupModalProps) => {
   const [name, setName] = useState('');
-  const [emails, setEmails] = useState<string[]>(['', '']);
+  const [emails, setEmails] = useState<string[]>(['']);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -23,14 +26,16 @@ export const CreateGroupModal = ({ isOpen, onClose, onGroupCreated }: CreateGrou
   };
 
   const addEmailField = () => {
-    if (emails.length < 4) {
+    if (emails.length < maxInvites) {
       setEmails([...emails, '']);
     }
   };
 
   const removeEmailField = (index: number) => {
-    if (emails.length > 2) {
+    if (emails.length > 1) {
       setEmails(emails.filter((_, i) => i !== index));
+    } else {
+      setEmails(['']);
     }
   };
 
@@ -38,11 +43,10 @@ export const CreateGroupModal = ({ isOpen, onClose, onGroupCreated }: CreateGrou
     e.preventDefault();
     setError('');
 
-    const memberEmails = emails.map(em => em.trim()).filter(Boolean);
+    const memberEmails = emails.map((em) => em.trim()).filter(Boolean);
 
-    // Validation: 3–5 total members (leader + invitees → need 2–4 invitee emails)
-    if (memberEmails.length < 2 || memberEmails.length > 4) {
-      setError('You need 2 to 4 member emails (total group size must be 3–5 including you).');
+    if (memberEmails.length > maxInvites) {
+      setError(`You can invite at most ${maxInvites} other students (${MAX_GROUP_MEMBERS} members including you).`);
       return;
     }
 
@@ -50,13 +54,12 @@ export const CreateGroupModal = ({ isOpen, onClose, onGroupCreated }: CreateGrou
 
     try {
       await projectApi.post('/groups', {
-        name,
+        name: name.trim(),
         member_emails: memberEmails,
       });
 
-      // Reset form
       setName('');
-      setEmails(['', '']);
+      setEmails(['']);
       onGroupCreated();
       onClose();
     } catch (err: any) {
@@ -98,9 +101,9 @@ export const CreateGroupModal = ({ isOpen, onClose, onGroupCreated }: CreateGrou
           <div>
             <div className="flex items-center justify-between mb-2">
               <label className="block text-sm font-medium text-slate-700">
-                Member Emails <span className="text-slate-400 font-normal">(2–4 invites)</span>
+                Invite members <span className="text-slate-400 font-normal">(optional, up to {maxInvites})</span>
               </label>
-              {emails.length < 4 && (
+              {emails.length < maxInvites && (
                 <button
                   type="button"
                   onClick={addEmailField}
@@ -116,26 +119,25 @@ export const CreateGroupModal = ({ isOpen, onClose, onGroupCreated }: CreateGrou
                 <div key={index} className="flex gap-2">
                   <input
                     type="email"
-                    required
                     value={email}
                     onChange={(e) => handleEmailChange(index, e.target.value)}
                     className="flex-1 px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 text-sm"
-                    placeholder={`member${index + 1}@university.edu`}
+                    placeholder="student@university.edu"
                   />
-                  {emails.length > 2 && (
-                    <button
-                      type="button"
-                      onClick={() => removeEmailField(index)}
-                      className="p-2 text-slate-400 hover:text-red-500 transition-colors"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  )}
+                  <button
+                    type="button"
+                    onClick={() => removeEmailField(index)}
+                    className="p-2 text-slate-400 hover:text-red-500 transition-colors shrink-0"
+                    title={emails.length > 1 ? 'Remove' : 'Clear'}
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
                 </div>
               ))}
             </div>
             <p className="mt-2 text-xs text-slate-500">
-              Groups require 3–5 total members (including you). Add 2–4 member emails above.
+              You are the first member as soon as the group is created. You can add more people on the Groups page
+              anytime (up to {MAX_GROUP_MEMBERS} members including you).
             </p>
           </div>
 

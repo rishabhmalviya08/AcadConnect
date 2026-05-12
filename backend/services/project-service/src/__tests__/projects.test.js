@@ -22,11 +22,11 @@ afterEach(cleanDb);
 // ─────────────────────────────────────────────────────────────────
 describe('POST /api/projects', () => {
   // Test 45
-  it('faculty creates a project with status=open', async () => {
-    const { token: facultyToken } = await createFaculty();
+  it('student creates a project with status=open', async () => {
+    const { token: studentToken } = await createStudent();
     const res = await request(projectApp)
       .post('/api/projects')
-      .set(authHeader(facultyToken))
+      .set(authHeader(studentToken))
       .send({ title: 'AI Research', description: 'Researching AI systems' });
 
     expect(res.status).toBe(201);
@@ -35,21 +35,21 @@ describe('POST /api/projects', () => {
   });
 
   // Test 46
-  it('returns 403 when a student tries to create a project', async () => {
-    const { token: studentToken } = await createStudent();
+  it('returns 403 when faculty tries to create a project', async () => {
+    const { token: facultyToken } = await createFaculty();
     const res = await request(projectApp)
       .post('/api/projects')
-      .set(authHeader(studentToken))
+      .set(authHeader(facultyToken))
       .send({ title: 'Sneaky', description: 'Not allowed' });
     expect(res.status).toBe(403);
   });
 
   // Test 47
   it('returns 400 when title or description is missing', async () => {
-    const { token: facultyToken } = await createFaculty();
+    const { token: studentToken } = await createStudent();
     const res = await request(projectApp)
       .post('/api/projects')
-      .set(authHeader(facultyToken))
+      .set(authHeader(studentToken))
       .send({ title: 'Only Title' }); // missing description
     expect(res.status).toBe(400);
   });
@@ -69,7 +69,7 @@ describe('GET /api/projects', () => {
   it('authenticated user sees all projects with faculty_name', async () => {
     const { token: facultyToken } = await createFaculty({ name: 'Dr. Smith' });
     const { token: studentToken } = await createStudent();
-    await createProject(facultyToken, { title: 'Vision Research' });
+    await createProject(studentToken, { title: 'Vision Research' });
 
     const res = await request(projectApp)
       .get('/api/projects')
@@ -94,7 +94,7 @@ describe('GET /api/projects/:id', () => {
   it('any authenticated user gets a specific project', async () => {
     const { token: facultyToken } = await createFaculty();
     const { token: studentToken } = await createStudent();
-    const project = await createProject(facultyToken, { title: 'Specific Project' });
+    const project = await createProject(studentToken, { title: 'Specific Project' });
 
     const res = await request(projectApp)
       .get(`/api/projects/${project.id}`)

@@ -1,0 +1,224 @@
+[
+  {
+    "first_name": "Arjun",
+    "last_name": "Mehta",
+    "email": "arjun.mehta@sjsu.edu",
+    "department": "Computer Science",
+    "max_capacity": 5,
+    "interests": ["Distributed Systems", "Cloud Computing", "Scalability"],
+    "research_areas": ["Fault Tolerance", "Microservices Architecture"],
+    "bio": "Assistant Professor specializing in large-scale distributed systems and resilient cloud architectures.",
+    "profile_picture_url": "https://example.com/avatars/arjun_mehta.png"
+  },
+  {
+    "first_name": "Sophia",
+    "last_name": "Chen",
+    "email": "sophia.chen@sjsu.edu",
+    "department": "Software Engineering",
+    "max_capacity": 4,
+    "interests": ["Agile Development", "DevOps", "Software Architecture"],
+    "research_areas": ["Continuous Integration", "Software Lifecycle"],
+    "bio": "Lecturer focused on modern software development practices and DevOps culture.",
+    "profile_picture_url": "https://example.com/avatars/sophia_chen.png"
+  },
+  {
+    "first_name": "Michael",
+    "last_name": "Brown",
+    "email": "michael.brown@sjsu.edu",
+    "department": "Computer Science",
+    "max_capacity": 6,
+    "interests": ["Artificial Intelligence", "Machine Learning", "Data Science"],
+    "research_areas": ["Deep Learning", "Predictive Modeling"],
+    "bio": "Professor researching scalable machine learning models and real-world AI applications.",
+    "profile_picture_url": "https://example.com/avatars/michael_brown.png"
+  },
+  {
+    "first_name": "Priya",
+    "last_name": "Natarajan",
+    "email": "priya.natarajan@sjsu.edu",
+    "department": "Software Engineering",
+    "max_capacity": 5,
+    "interests": ["Software Testing", "Quality Assurance", "Automation"],
+    "research_areas": ["Test Automation", "Software Reliability"],
+    "bio": "Assistant Professor focused on improving software quality through automation and testing strategies.",
+    "profile_picture_url": "https://example.com/avatars/priya_natarajan.png"
+  },
+  {
+    "first_name": "David",
+    "last_name": "Lee",
+    "email": "david.lee@sjsu.edu",
+    "department": "Computer Science",
+    "max_capacity": 4,
+    "interests": ["Cybersecurity", "Cryptography", "Network Security"],
+    "research_areas": ["Secure Systems", "Privacy Engineering"],
+    "bio": "Associate Professor working on next-generation cybersecurity and privacy-preserving systems.",
+    "profile_picture_url": "https://example.com/avatars/david_lee.png"
+  },
+  {
+    "first_name": "Ananya",
+    "last_name": "Reddy",
+    "email": "ananya.reddy@sjsu.edu",
+    "department": "Computer Science",
+    "max_capacity": 5,
+    "interests": ["Natural Language Processing", "AI", "Text Analytics"],
+    "research_areas": ["Language Models", "Sentiment Analysis"],
+    "bio": "Researcher in NLP focusing on conversational AI and language understanding.",
+    "profile_picture_url": "https://example.com/avatars/ananya_reddy.png"
+  },
+  {
+    "first_name": "Kevin",
+    "last_name": "Nguyen",
+    "email": "kevin.nguyen@sjsu.edu",
+    "department": "Software Engineering",
+    "max_capacity": 3,
+    "interests": ["Mobile Development", "UI/UX", "Frontend Engineering"],
+    "research_areas": ["Human-Centered Design", "Cross-Platform Apps"],
+    "bio": "Lecturer specializing in mobile app development and user experience design.",
+    "profile_picture_url": "https://example.com/avatars/kevin_nguyen.png"
+  },
+  {
+    "first_name": "Laura",
+    "last_name": "Martinez",
+    "email": "laura.martinez@sjsu.edu",
+    "department": "Computer Science",
+    "max_capacity": 4,
+    "interests": ["Computer Vision", "Robotics", "AI"],
+    "research_areas": ["Image Processing", "Autonomous Systems"],
+    "bio": "Assistant Professor working on vision systems for robotics and automation.",
+    "profile_picture_url": "https://example.com/avatars/laura_martinez.png"
+  },
+  {
+    "first_name": "Ethan",
+    "last_name": "Walker",
+    "email": "ethan.walker@sjsu.edu",
+    "department": "Computer Science",
+    "max_capacity": 5,
+    "interests": ["Databases", "Big Data", "Data Engineering"],
+    "research_areas": ["Query Optimization", "Data Warehousing"],
+    "bio": "Associate Professor focused on large-scale data systems and analytics.",
+    "profile_picture_url": "https://example.com/avatars/ethan_walker.png"
+  },
+  {
+    "first_name": "Zara",
+    "last_name": "Ali",
+    "email": "zara.ali@sjsu.edu",
+    "department": "Software Engineering",
+    "max_capacity": 4,
+    "interests": ["Software Architecture", "Design Patterns", "Clean Code"],
+    "research_areas": ["System Design", "Maintainability"],
+    "bio": "Lecturer passionate about clean architecture and scalable system design.",
+    "profile_picture_url": "https://example.com/avatars/zara_ali.png"
+  },
+
+  {
+    "first_name": "Ryan",
+    "last_name": "Scott",
+    "email": "ryan.scott@sjsu.edu",
+    "department": "Computer Science",
+    "max_capacity": 5,
+    "interests": ["Operating Systems", "Concurrency", "Parallel Computing"],
+    "research_areas": ["Thread Scheduling", "Distributed OS"],
+    "bio": "Professor studying efficient operating systems and parallel execution models.",
+    "profile_picture_url": "https://example.com/avatars/ryan_scott.png"
+  },
+  {
+    "first_name": "Mei",
+    "last_name": "Lin",
+    "email": "mei.lin@sjsu.edu",
+    "department": "Computer Science",
+    "max_capacity": 3,
+    "interests": ["Data Mining", "AI", "Analytics"],
+    "research_areas": ["Pattern Recognition", "Clustering Algorithms"],
+    "bio": "Assistant Professor focused on extracting insights from large datasets.",
+    "profile_picture_url": "https://example.com/avatars/mei_lin.png"
+  },
+  {
+    "first_name": "Carlos",
+    "last_name": "Rivera",
+    "email": "carlos.rivera@sjsu.edu",
+    "department": "Software Engineering",
+    "max_capacity": 4,
+    "interests": ["Backend Development", "APIs", "Microservices"],
+    "research_areas": ["Service-Oriented Architecture", "API Design"],
+    "bio": "Industry-focused lecturer teaching backend engineering and API systems.",
+    "profile_picture_url": "https://example.com/avatars/carlos_rivera.png"
+  },
+  {
+    "first_name": "Emily",
+    "last_name": "Davis",
+    "email": "emily.davis@sjsu.edu",
+    "department": "Computer Science",
+    "max_capacity": 5,
+    "interests": ["AI Ethics", "Responsible AI", "Policy"],
+    "research_areas": ["Bias in AI", "Ethical Frameworks"],
+    "bio": "Researcher exploring ethical challenges in artificial intelligence.",
+    "profile_picture_url": "https://example.com/avatars/emily_davis.png"
+  },
+  {
+    "first_name": "Noah",
+    "last_name": "Kim",
+    "email": "noah.kim@sjsu.edu",
+    "department": "Computer Science",
+    "max_capacity": 6,
+    "interests": ["Blockchain", "Cryptography", "Distributed Ledger"],
+    "research_areas": ["Smart Contracts", "Consensus Algorithms"],
+    "bio": "Professor researching blockchain scalability and secure transactions.",
+    "profile_picture_url": "https://example.com/avatars/noah_kim.png"
+  },
+
+  {
+    "first_name": "Aisha",
+    "last_name": "Hassan",
+    "email": "aisha.hassan@sjsu.edu",
+    "department": "Software Engineering",
+    "max_capacity": 4,
+    "interests": ["Web Development", "Frontend", "React"],
+    "research_areas": ["UI Performance", "Web Accessibility"],
+    "bio": "Lecturer focused on modern frontend frameworks and accessibility.",
+    "profile_picture_url": "https://example.com/avatars/aisha_hassan.png"
+  },
+  {
+    "first_name": "Daniel",
+    "last_name": "Park",
+    "email": "daniel.park@sjsu.edu",
+    "department": "Computer Science",
+    "max_capacity": 5,
+    "interests": ["Computer Networks", "IoT", "Edge Computing"],
+    "research_areas": ["Network Optimization", "IoT Systems"],
+    "bio": "Assistant Professor researching next-gen networking and IoT.",
+    "profile_picture_url": "https://example.com/avatars/daniel_park.png"
+  },
+  {
+    "first_name": "Olivia",
+    "last_name": "Turner",
+    "email": "olivia.turner@sjsu.edu",
+    "department": "Software Engineering",
+    "max_capacity": 3,
+    "interests": ["Project Management", "Agile", "Scrum"],
+    "research_areas": ["Team Productivity", "Software Process"],
+    "bio": "Lecturer specializing in agile project management practices.",
+    "profile_picture_url": "https://example.com/avatars/olivia_turner.png"
+  },
+  {
+    "first_name": "Liam",
+    "last_name": "Hughes",
+    "email": "liam.hughes@sjsu.edu",
+    "department": "Computer Science",
+    "max_capacity": 4,
+    "interests": ["Game Development", "Graphics", "Simulation"],
+    "research_areas": ["Rendering Techniques", "Game Engines"],
+    "bio": "Assistant Professor working on real-time graphics and simulation.",
+    "profile_picture_url": "https://example.com/avatars/liam_hughes.png"
+  },
+  {
+    "first_name": "Chloe",
+    "last_name": "Wang",
+    "email": "chloe.wang@sjsu.edu",
+    "department": "Computer Science",
+    "max_capacity": 5,
+    "interests": ["Data Science", "Visualization", "Analytics"],
+    "research_areas": ["Visual Analytics", "Data Storytelling"],
+    "bio": "Researcher focused on communicating data insights effectively.",
+    "profile_picture_url": "https://example.com/avatars/chloe_wang.png"
+  }
+]

@@ -32,7 +32,7 @@ backend/
 
 ### AI feedback service (`8001`)
 
-- **Feedback:** `POST /feedback/generate`, `GET /feedback/{request_id}`, `POST /feedback/generate-sync`
+- **Feedback:** `POST /api/feedback/generate`, `GET /api/feedback/{request_id}`, `POST /api/feedback/generate-sync`
 - **FAQ chat:** `POST /api/chat/faq` — onboarding-only answers from `faq_kb.md`; optional `Authorization: Bearer` for role-aware hints; rate limit `CHAT_RATE_LIMIT_PER_MINUTE` (default 20) per user id or client IP
 - **CORS:** Dev origins for Vite (override with `CORS_ALLOW_ORIGINS` CSV)
 - **Env:** `OPENAI_API_KEY`, `JWT_SECRET` (for chat + feedback rate-limit identity), `CHAT_RATE_LIMIT_PER_MINUTE` (FAQ), `OPENAI_FEEDBACK_RATE_LIMIT_PER_MINUTE` (project feedback OpenAI calls, default 8), optional `OPENAI_CHAT_MODEL`

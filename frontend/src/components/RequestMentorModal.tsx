@@ -38,9 +38,8 @@ export const RequestMentorModal = ({ isOpen, onClose, onRequested, facultyName, 
   const fetchData = async () => {
     setIsLoadingData(true);
     try {
-      const projectsRes = await projectApi.get('/projects');
+      const projectsRes = await projectApi.get('/projects/me');
       const allProjects: Project[] = projectsRes.data.projects || [];
-      // Student can only send requests from open projects they lead.
       setProjects(allProjects.filter((p) => p.status === 'open'));
     } catch {
       setProjects([]);
@@ -58,7 +57,10 @@ export const RequestMentorModal = ({ isOpen, onClose, onRequested, facultyName, 
     e.preventDefault();
     setError('');
 
-    if (!facultyId) { setError('Selected faculty is invalid. Please retry.'); return; }
+    if (!facultyId && !facultyName?.trim()) {
+      setError('Selected faculty is invalid. Please retry.');
+      return;
+    }
     if (!selectedProjectId) { setError('Please select a project.'); return; }
     if (!snippet.trim()) { setError('Please enter your application snippet.'); return; }
     if (wordCount > 200) { setError('Snippet cannot exceed 200 words.'); return; }
@@ -67,7 +69,7 @@ export const RequestMentorModal = ({ isOpen, onClose, onRequested, facultyName, 
     try {
       await projectApi.post('/requests', {
         project_id: selectedProjectId,
-        faculty_id: facultyId,
+        ...(facultyId ? { faculty_id: facultyId } : {}),
         faculty_name: facultyName,
         snippet: snippet.trim(),
       });
