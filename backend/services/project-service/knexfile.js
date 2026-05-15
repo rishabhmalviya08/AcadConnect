@@ -8,13 +8,15 @@ require('dotenv').config({ path: envFile });
 module.exports = {
   development: {
     client: 'pg',
-    connection: {
-      host: process.env.POSTGRES_HOST || 'localhost',
-      port: Number(process.env.POSTGRES_PORT) || 5432,
-      user: process.env.POSTGRES_USER || 'acadconnect',
-      password: process.env.POSTGRES_PASSWORD || 'yourStrongPassword',
-      database: process.env.POSTGRES_DB || 'acadconnect',
-    },
+    connection: process.env.DATABASE_URL
+      ? { connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } }
+      : {
+          host: process.env.POSTGRES_HOST || 'localhost',
+          port: Number(process.env.POSTGRES_PORT) || 5432,
+          user: process.env.POSTGRES_USER || 'acadconnect',
+          password: process.env.POSTGRES_PASSWORD || 'yourStrongPassword',
+          database: process.env.POSTGRES_DB || 'acadconnect',
+        },
     migrations: {
       directory: './src/db/migrations',
       tableName: 'knex_migrations',
@@ -24,7 +26,10 @@ module.exports = {
 
   production: {
     client: 'pg',
-    connection: process.env.DATABASE_URL,
+    connection: {
+      connectionString: process.env.DATABASE_URL,
+      ssl: { rejectUnauthorized: false },
+    },
     migrations: {
       directory: './src/migrations',
       tableName: 'knex_migrations',

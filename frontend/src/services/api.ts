@@ -53,7 +53,7 @@ const createApiClient = (baseURL: string) => {
   return api;
 };
 
-export const authApi = createApiClient('http://localhost:3001/api');
-export const projectApi = createApiClient('http://localhost:3002/api');
-export const aiApi = createApiClient('http://localhost:8001/api');
-export const recommendationApi = createApiClient('http://localhost:8002/api');
+export const authApi = createApiClient(import.meta.env.VITE_USER_SERVICE_URL || 'http://localhost:3001/api');
+export const projectApi = createApiClient(import.meta.env.VITE_PROJECT_SERVICE_URL || 'http://localhost:3002/api');
+export const aiApi = createApiClient(import.meta.env.VITE_AI_FEEDBACK_SERVICE_URL || 'http://localhost:8001/api');
+export const recommendationApi = createApiClient(import.meta.env.VITE_RECOMMENDATION_SERVICE_URL || 'http://localhost:8002/api');
