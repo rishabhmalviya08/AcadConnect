@@ -66,7 +66,8 @@ export const Dashboard = () => {
 
   useEffect(() => {
     if (!token) return;
-    const ws = new WebSocket(`ws://localhost:3001/ws?token=${encodeURIComponent(token)}`);
+    const wsUrl = import.meta.env.VITE_USER_SERVICE_WS_URL || `ws://${window.location.hostname}:3001/ws`;
+    const ws = new WebSocket(`${wsUrl}?token=${encodeURIComponent(token)}`);
 
     ws.onmessage = (event) => {
       try {
