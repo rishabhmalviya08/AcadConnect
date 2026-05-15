@@ -37,13 +37,12 @@ services:
       - key: JWT_SECRET
         fromService:
           name: user-service
-          type: web
-          envVarKey: JWT_SECRET
+          type: env
+          property: JWT_SECRET
       - key: AI_FEEDBACK_SERVICE_URL
         fromService:
           name: ai-feedback-service
-          type: web
-          property: host
+          type: host
 
   # 3. AI Feedback Service (Python)
   - type: web
