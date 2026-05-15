@@ -40,10 +40,7 @@ services:
           type: web
           envVarKey: JWT_SECRET
       - key: AI_FEEDBACK_SERVICE_URL
-        fromService:
-          name: ai-feedback-service
-          type: web
-          property: host
+        value: http://ai-feedback-service:8001
 
   # 3. AI Feedback Service (Python)
   - type: web
@@ -59,6 +56,8 @@ services:
         sync: false
       - key: OPENAI_API_KEY
         sync: false
+      - key: PYTHON_VERSION
+        value: 3.12.3
 
   # 4. Recommendation Service (Python)
   - type: web
@@ -72,6 +71,8 @@ services:
         value: 8002
       - key: MONGO_URI
         sync: false
+      - key: PYTHON_VERSION
+        value: 3.12.3
 
 databases:
   - name: acadconnect-db
